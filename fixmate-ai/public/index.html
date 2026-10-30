@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FixMate AI - Project Scanner</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+          </svg>
+          <span class="logo-text">FixMate AI</span>
+        </div>
+        <span class="tagline">Automatic Project Scanning & Debugging Assistant</span>
+      </div>
+      <div class="header-right">
+        <div class="ai-indicator">
+          <span class="ai-dot"></span>
+          <span>NVIDIA Nemotron</span>
+        </div>
+        <div class="analyzer-status" id="analyzer-status"></div>
+        <a href="#" class="github-link" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+          </svg>
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Dashboard -->
+    <main class="dashboard">
+      <!-- LEFT PANEL: Project Explorer -->
+      <aside class="panel sidebar" aria-label="Project Explorer">
+        <div class="sidebar-header">
+          <h2 class="panel-title">Project Explorer</h2>
+          <div class="sidebar-actions">
+            <button type="button" id="clear-project-btn" class="btn btn-ghost btn-sm" aria-label="Clear project">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Upload Section (Landing State) -->
+        <div id="upload-section" class="upload-section">
+          <div class="upload-dropzone" id="dropzone">
+            <input type="file" id="file-input" multiple webkitdirectory directory style="display: none;" accept=".py,.js,.ts,.tsx,.java,.c,.cpp,.cc,.cxx,.h,.hpp,.html,.htm,.css,.json">
+            <input type="file" id="zip-input" style="display: none;" accept=".zip">
+            
+            <div class="dropzone-content">
+              <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 21l-5-5-5 5M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+              </svg>
+              <h3>Select Project to Scan</h3>
+              <p class="dropzone-text">Drag and drop a folder, files, or ZIP archive</p>
+              
+              <div class="upload-buttons">
+                <button type="button" id="upload-files-btn" class="btn btn-primary">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+                    <path d="M17 21l-5-5-5 5"></path>
+                  </svg>
+                  <span>Upload Files</span>
+                </button>
+                <button type="button" id="upload-folder-btn" class="btn btn-secondary">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"></path>
+                  </svg>
+                  <span>Upload Folder</span>
+                </button>
+                <button type="button" id="upload-zip-btn" class="btn btn-secondary">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 21l-5-5-5 5"></path>
+                  </svg>
+                  <span>Upload ZIP</span>
+                </button>
+              </div>
+              
+              <p class="dropzone-hint">Supports: Python, JavaScript, TypeScript, Java, C/C++, HTML, CSS, JSON</p>
+            </div>
+          </div>
+
+          <div class="upload-info">
+            <h4>How it works</h4>
+            <ul>
+              <li><strong>1.</strong> Select a project folder, multiple files, or a ZIP archive</li>
+              <li><strong>2.</strong> Click "Scan Project" to run automatic static analysis</li>
+              <li><strong>3.</strong> Review detected errors with AI-powered explanations</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Project Tree (After Upload) -->
+        <div id="project-tree-section" class="project-tree-section hidden">
+          <div class="project-summary">
+            <h3 id="project-name">Project</h3>
+            <div class="summary-stats">
+              <span class="stat" id="stat-files">0 files</span>
+              <span class="stat" id="stat-languages">0 languages</span>
+              <span class="stat" id="stat-errors">0 errors</span>
+              <span class="stat" id="stat-warnings">0 warnings</span>
+            </div>
+          </div>
+          
+          <div class="scan-actions">
+            <button type="button" id="scan-btn" class="btn btn-primary btn-lg">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+              <span>Scan Project</span>
+            </button>
+            <button type="button" id="rescan-btn" class="btn btn-secondary btn-lg hidden">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"></path>
+              </svg>
+              <span>Rescan</span>
+            </button>
+          </div>
+
+          <div class="file-tree" id="file-tree"></div>
+        </div>
+
+        <!-- Scan Progress -->
+        <div id="scan-progress" class="scan-progress hidden">
+          <div class="progress-header">
+            <span>Scanning Project</span>
+            <span class="progress-percent" id="progress-percent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-steps" id="progress-steps"></div>
+          <p class="progress-status" id="progress-status">Initializing...</p>
+        </div>
+      </aside>
+
+      <!-- CENTER PANEL: Diagnostics -->
+      <section class="panel diagnostics-panel" aria-label="Diagnostics">
+        <div class="panel-header">
+          <h2 class="panel-title">Diagnostics</h2>
+          <div class="diagnostics-filters">
+            <select id="filter-severity" class="filter-select">
+              <option value="all">All Severities</option>
+              <option value="error">Errors</option>
+              <option value="warning">Warnings</option>
+              <option value="info">Info</option>
+            </select>
+            <select id="filter-language" class="filter-select">
+              <option value="all">All Languages</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="diagnostics-empty" class="empty-state">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h7"></path>
+            </svg>
+          </div>
+          <h3>No project loaded</h3>
+          <p>Upload a project folder, files, or ZIP to start scanning</p>
+        </div>
+
+        <!-- Diagnostics List -->
+        <div id="diagnostics-list" class="diagnostics-list hidden">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- No Diagnostics State -->
+        <div id="diagnostics-clean" class="empty-state hidden">
+          <div class="empty-icon success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M20 6L9 17l-5-5"></path>
+            </svg>
+          </div>
+          <h3>No supported syntax errors detected</h3>
+          <p>Your project appears to be free of syntax errors detectable by static analysis</p>
+        </div>
+      </section>
+
+      <!-- RIGHT PANEL: AI Explanation -->
+      <aside class="panel explanation-panel" aria-label="AI Explanation">
+        <div class="panel-header">
+          <h2 class="panel-title">AI Explanation</h2>
+          <div class="explanation-actions">
+            <button type="button" id="copy-explanation-btn" class="btn btn-ghost btn-sm hidden" aria-label="Copy explanation">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"></path>
+                <path d="M8 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2v-2"></path>
+                <path d="M16 4v-2"></path>
+              </svg>
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="explanation-empty" class="empty-state">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
+              <path d="M12 6v6l4 2"></path>
+            </svg>
+          </div>
+          <h3>Select a diagnostic</h3>
+          <p>Click on an error or warning in the center panel to see the AI explanation</p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="explanation-loading" class="loading-state hidden">
+          <div class="loading-spinner"></div>
+          <p>Generating AI explanation...</p>
+        </div>
+
+        <!-- Explanation Content -->
+        <div id="explanation-content" class="explanation-content hidden">
+          <!-- Populated dynamically -->
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="js/upload.js"></script>
+  <script src="js/projectExplorer.js"></script>
+  <script src="js/diagnostics.js"></script>
+  <script src="js/explanation.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
