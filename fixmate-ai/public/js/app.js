@@ -1,5 +1,5 @@
 /**
- * FixMate AI - Main Application
+ * FixMate - Main Application
  * Project Scanner & Debugging Assistant
  */
 
@@ -10,12 +10,31 @@ const App = {
   },
 
   init() {
+    this.initTheme();
     this.checkHealth();
     Upload.init();
     ProjectExplorer.init();
     Diagnostics.init();
     Explanation.init();
-    console.log('FixMate AI Project Scanner initialized');
+    console.log('FixMate Project Scanner initialized');
+  },
+
+  initTheme() {
+    const themeToggle = document.getElementById('theme-toggle');
+    if (!themeToggle) return;
+
+    // Get saved theme or default to light
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
+    themeToggle.addEventListener('click', () => this.toggleTheme());
+  },
+
+  toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
   },
 
   async checkHealth() {

@@ -1,4 +1,4 @@
-// FixMate AI - Results Renderer
+// FixMate - Results Renderer
 
 const Renderer = {
   // Render the complete diagnosis results

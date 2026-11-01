@@ -1,6 +1,6 @@
 /**
  * Explanation Module
- * Renders and manages the AI explanation panel
+ * Renders and manages the explanation panel
  */
 
 const Explanation = {
@@ -148,7 +148,7 @@ const Explanation = {
     if (!this.state.currentExplanation) return;
     
     const exp = this.state.currentExplanation;
-    const text = `FixMate AI - Explanation
+    const text = `FixMate - Explanation
 =======================
 
 What Happened: ${exp.whatHappened}

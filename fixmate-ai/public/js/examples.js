@@ -1,4 +1,4 @@
-// FixMate AI - Predefined Examples
+// FixMate - Predefined Examples
 
 const EXAMPLES = [
   {
