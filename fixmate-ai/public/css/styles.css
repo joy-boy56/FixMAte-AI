@@ -67,6 +67,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Utility Classes */
+.hidden {
+  display: none !important;
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
@@ -217,6 +222,7 @@ body {
 .dashboard {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr var(--explanation-width);
+  grid-template-rows: 1fr;
   flex: 1;
   overflow: hidden;
   min-height: 0;

@@ -116,9 +116,44 @@ const Upload = {
       return;
     }
 
-    this.state.files = validFiles;
-    this.state.projectName = this.guessProjectName(validFiles);
+    // Add metadata to each file for ProjectExplorer, but keep original File object for upload
+    const processedFiles = validFiles.map(file => {
+      const relativePath = file.webkitRelativePath || file.name;
+      const extension = '.' + relativePath.split('.').pop().toLowerCase();
+      const language = this.detectLanguage(relativePath);
+      
+      return {
+        // Keep reference to original File object for upload
+        _file: file,
+        // Metadata for display
+        path: relativePath,
+        status: 'supported',
+        language: language,
+        extension: extension,
+        size: file.size,
+        name: file.name,
+      };
+    });
+
+    this.state.files = processedFiles;
+    this.state.projectName = this.guessProjectName(processedFiles);
     this.showProjectTree();
+  },
+
+  detectLanguage(filePath) {
+    const ext = '.' + filePath.split('.').pop().toLowerCase();
+    const langMap = {
+      '.py': 'Python', '.pyw': 'Python',
+      '.js': 'JavaScript', '.mjs': 'JavaScript', '.cjs': 'JavaScript',
+      '.ts': 'TypeScript', '.tsx': 'TypeScript',
+      '.java': 'Java',
+      '.c': 'C',
+      '.cpp': 'C++', '.cc': 'C++', '.cxx': 'C++', '.h': 'C++', '.hpp': 'C++',
+      '.html': 'HTML', '.htm': 'HTML',
+      '.css': 'CSS',
+      '.json': 'JSON',
+    };
+    return langMap[ext] || 'Unknown';
   },
 
   handleZip(fileList) {
@@ -210,7 +245,8 @@ const Upload = {
   },
 
   getFiles() {
-    return this.state.files;
+    // Return original File objects for uploading (stored in _file property)
+    return this.state.files.map(f => f._file).filter(f => f instanceof File);
   },
 
   getProjectName() {

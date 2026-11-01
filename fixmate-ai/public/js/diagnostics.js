@@ -39,10 +39,61 @@ const Diagnostics = {
   },
 
   setDiagnostics(diagnostics, files) {
-    this.state.diagnostics = diagnostics;
-    this.state.files = files;
-    this.updateLanguageFilter(diagnostics);
-    this.render();
+    console.log('[Diagnostics] setDiagnostics called:', diagnostics.length, 'diagnostics');
+    console.log('[Diagnostics] files:', files?.length);
+    try {
+      this.state.diagnostics = diagnostics;
+      this.state.files = files;
+      console.log('[Diagnostics] Calling updateLanguageFilter');
+      this.updateLanguageFilter(diagnostics);
+      console.log('[Diagnostics] Calling render');
+      this.render();
+    } catch (err) {
+      console.error('[Diagnostics] Error in setDiagnostics:', err);
+    }
+  },
+
+  updateLanguageFilter(diagnostics) {
+    console.log('[Diagnostics] updateLanguageFilter called');
+    const languages = [...new Set(diagnostics.map(d => d.language).filter(l => l !== 'Unknown'))];
+    console.log('[Diagnostics] languages found:', languages);
+    console.log('[Diagnostics] filterLanguage element:', this.elements.filterLanguage);
+    if (this.elements.filterLanguage) {
+      this.elements.filterLanguage.innerHTML = `
+        <option value="all">All Languages</option>
+        ${languages.map(l => `<option value="${l}">${l}</option>`).join('')}
+      `;
+      console.log('[Diagnostics] filterLanguage updated');
+    } else {
+      console.error('[Diagnostics] filterLanguage element NOT FOUND!');
+    }
+  },
+
+  render() {
+    console.log('[Diagnostics] render called, diagnostics:', this.state.diagnostics.length);
+    try {
+      const filtered = this.getFilteredDiagnostics();
+      console.log('[Diagnostics] filtered:', filtered.length, 'currentFilter:', this.state.currentFilter);
+      
+      if (this.state.diagnostics.length === 0) {
+        console.log('[Diagnostics] showing empty state');
+        this.showEmpty();
+        return;
+      }
+
+      if (filtered.length === 0) {
+        console.log('[Diagnostics] showing clean state (filtered out)');
+        this.showClean();
+        return;
+      }
+
+      console.log('[Diagnostics] showing list with', filtered.length, 'items');
+      this.showList();
+      this.elements.list.innerHTML = filtered.map(d => this.renderDiagnosticCard(d)).join('');
+      this.bindCardEvents();
+    } catch (err) {
+      console.error('[Diagnostics] Error in render:', err);
+    }
   },
 
   updateLanguageFilter(diagnostics) {
@@ -84,18 +135,21 @@ const Diagnostics = {
   },
 
   showEmpty() {
+    console.log('[Diagnostics] showEmpty called');
     this.elements.empty.classList.remove('hidden');
     this.elements.list.classList.add('hidden');
     this.elements.clean.classList.add('hidden');
   },
 
   showClean() {
+    console.log('[Diagnostics] showClean called');
     this.elements.empty.classList.add('hidden');
     this.elements.list.classList.add('hidden');
     this.elements.clean.classList.remove('hidden');
   },
 
   showList() {
+    console.log('[Diagnostics] showList called');
     this.elements.empty.classList.add('hidden');
     this.elements.list.classList.remove('hidden');
     this.elements.clean.classList.add('hidden');

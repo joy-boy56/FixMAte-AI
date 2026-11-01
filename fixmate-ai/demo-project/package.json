@@ -1,0 +1,44 @@
+{
+    "name": "test",
+    "version": 1.0,
+    "description": "JSON syntax errors demo",
+    
+    "dependencies": {
+        "express": "^4.18.0",
+        "lodash": "^4.17.21",
+    },
+    
+    "scripts": {
+        "start": "node index.js",
+        "test": "jest",
+    },
+    
+    "invalid": [
+        1,
+        2,
+        3,
+    ],
+    
+    "unterminated_string": "This string is not closed,
+    
+    "missing_comma": {
+        "a": 1
+        "b": 2
+    },
+    
+    "trailing_comma_in_object": {
+        "x": 1,
+    },
+    
+    "invalid_number": 0123,
+    
+    "single_quotes": 'JSON requires double quotes',
+    
+    "undefined_value": {
+        "test": undefined
+    },
+    
+    "function_value": {
+        "callback": function() { return 1; }
+    }
+}

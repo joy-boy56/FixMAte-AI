@@ -93,6 +93,9 @@ const App = {
         throw new Error(result.error || 'Scan failed');
       }
 
+      console.log('[App] Scan successful, diagnostics:', result.data.diagnostics?.length);
+      console.log('[App] Calling Diagnostics.setDiagnostics');
+
       this.state.scanResult = result.data;
       
       // Update UI with results
