@@ -153,10 +153,13 @@ const Upload = {
       };
     });
 
-    console.log('[Upload] Processed files:', processedFiles.map(f => ({name: f.name, path: f.path, hasFile: f._file instanceof File})));
-    this.state.files = processedFiles;
-    this.state.projectName = this.guessProjectName(processedFiles);
-    this.showProjectTree();
+    // Read file contents
+    this.readFileContents(processedFiles).then(filesWithContent => {
+      console.log('[Upload] Processed files with content:', filesWithContent.map(f => ({name: f.name, path: f.path, hasContent: !!f.content})));
+      this.state.files = filesWithContent;
+      this.state.projectName = this.guessProjectName(filesWithContent);
+      this.showProjectTree();
+    });
   },
 
   handleFolder(fileList) {
@@ -183,9 +186,11 @@ const Upload = {
       };
     });
 
-    this.state.files = processedFiles;
-    this.state.projectName = this.guessProjectName(processedFiles);
-    this.showProjectTree();
+    this.readFileContents(processedFiles).then(filesWithContent => {
+      this.state.files = filesWithContent;
+      this.state.projectName = this.guessProjectName(filesWithContent);
+      this.showProjectTree();
+    });
   },
 
   detectLanguage(filePath) {
@@ -202,6 +207,20 @@ const Upload = {
       '.json': 'JSON',
     };
     return langMap[ext] || 'Unknown';
+  },
+
+  readFileContents(files) {
+    return Promise.all(files.map(file => {
+      if (file._file instanceof File) {
+        return file._file.text().then(content => {
+          return { ...file, content };
+        }).catch(err => {
+          console.error('[Upload] Failed to read file:', file.name, err);
+          return { ...file, content: '' };
+        });
+      }
+      return file;
+    }));
   },
 
   handleZip(fileList) {

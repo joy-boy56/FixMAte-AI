@@ -119,7 +119,7 @@ async function analyzeFileWithAI(filePath, language, content) {
     console.log('[AI Analyzer] Sending request to Nemotron...');
 
     const completion = await client.chat.completions.create({
-      model: 'nvidia/nemotron-3-ultra-550b-a55b',
+      model: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
       messages: [
         { role: 'system', content: getAnalysisSystemPrompt() },
         { role: 'user', content: prompt },
