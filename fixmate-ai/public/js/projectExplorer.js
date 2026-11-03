@@ -32,9 +32,8 @@ const ProjectExplorer = {
 
   updateSummary(files) {
     const supported = files.filter(f => f.status === 'supported');
-    const skipped = files.filter(f => f.status === 'skipped');
     const languages = [...new Set(supported.map(f => f.language).filter(l => l !== 'Unknown'))];
-    
+
     this.elements.statFiles.textContent = `${supported.length} files`;
     this.elements.statLanguages.textContent = `${languages.length} languages`;
     this.elements.statErrors.textContent = `0 errors`;
@@ -42,7 +41,6 @@ const ProjectExplorer = {
   },
 
   renderTree(files) {
-    // Build folder structure
     const tree = this.buildTree(files);
     this.elements.fileTree.innerHTML = this.renderTreeNode(tree, 0);
     this.bindTreeEvents();
@@ -50,37 +48,36 @@ const ProjectExplorer = {
 
   buildTree(files) {
     const root = { name: '', path: '', type: 'folder', children: [], isRoot: true };
-    
+
     for (const file of files) {
       const relativePath = file.path || file.webkitRelativePath || file.name;
       const parts = relativePath.split('/').filter(p => p);
-      
+
       let current = root;
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         const isFile = i === parts.length - 1;
         const currentPath = parts.slice(0, i + 1).join('/');
-        
+
         let child = current.children.find(c => c.name === part);
-        
+
         if (!child) {
           child = {
             name: part,
             path: currentPath,
             type: isFile ? 'file' : 'folder',
-            children: isFile ? [] : [],
+            children: [],
             fileData: isFile ? file : null,
           };
           current.children.push(child);
         }
-        
+
         if (!isFile) {
           current = child;
         }
       }
     }
-    
-    // Sort: folders first, then files, alphabetically
+
     const sortChildren = (node) => {
       node.children.sort((a, b) => {
         if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
@@ -89,7 +86,7 @@ const ProjectExplorer = {
       node.children.forEach(sortChildren);
     };
     sortChildren(root);
-    
+
     return root;
   },
 
@@ -97,13 +94,13 @@ const ProjectExplorer = {
     if (node.isRoot) {
       return node.children.map(child => this.renderTreeNode(child, depth)).join('');
     }
-    
+
     if (node.type === 'folder') {
       const isExpanded = this.state.expandedFolders.has(node.path);
       const childCount = node.children.length;
       const fileCount = node.children.filter(c => c.type === 'file').length;
       const folderCount = node.children.filter(c => c.type === 'folder').length;
-      
+
       let countText = '';
       if (fileCount > 0 && folderCount > 0) {
         countText = `${fileCount} files, ${folderCount} folders`;
@@ -112,7 +109,7 @@ const ProjectExplorer = {
       } else if (folderCount > 0) {
         countText = `${folderCount} folder${folderCount !== 1 ? 's' : ''}`;
       }
-      
+
       return `
         <div class="tree-folder" data-path="${this.escapeHtml(node.path)}">
           <div class="tree-folder-header ${isExpanded ? 'expanded' : ''}" data-path="${this.escapeHtml(node.path)}">
@@ -122,7 +119,7 @@ const ProjectExplorer = {
             <span class="folder-name">${this.escapeHtml(node.name)}</span>
             ${countText ? `<span class="folder-count">${this.escapeHtml(countText)}</span>` : ''}
           </div>
-          <div class="tree-files ${isExpanded ? '' : ''}" data-path="${this.escapeHtml(node.path)}">
+          <div class="tree-files" data-path="${this.escapeHtml(node.path)}" style="max-height: ${isExpanded ? '500px' : '0'}; overflow: hidden; transition: max-height 0.2s ease;">
             ${node.children.map(child => this.renderTreeNode(child, depth + 1)).join('')}
           </div>
         </div>
@@ -134,7 +131,7 @@ const ProjectExplorer = {
       const diagnostics = file?.diagnostics || [];
       const errorCount = diagnostics.filter(d => d.type === 'error').length;
       const warningCount = diagnostics.filter(d => d.type === 'warning').length;
-      
+
       return `
         <div class="tree-file ${isSelected ? 'selected' : ''} ${langClass}" data-path="${this.escapeHtml(node.path)}" data-file='${JSON.stringify(file).replace(/'/g, '&apos;')}'>
           <svg class="file-icon ${langClass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -156,13 +153,11 @@ const ProjectExplorer = {
   },
 
   getFileIcon(language) {
-    // Simplified - return generic file icon
     return `<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
             <path d="M14 2v6h6"></path>`;
   },
 
   bindTreeEvents() {
-    // Folder toggle
     this.elements.fileTree.querySelectorAll('.tree-folder-header').forEach(header => {
       header.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -170,8 +165,7 @@ const ProjectExplorer = {
         this.toggleFolder(path);
       });
     });
-    
-    // File selection
+
     this.elements.fileTree.querySelectorAll('.tree-file').forEach(fileEl => {
       fileEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -193,11 +187,10 @@ const ProjectExplorer = {
   selectFile(path) {
     this.state.selectedFile = path;
     this.renderTree(this.state.files);
-    
-    // Find file data
+
     const file = this.findFileByPath(path);
     if (file) {
-      Diagnostics.showFileDiagnostics(file);
+      App.showFileInEditor(file);
     }
   },
 
@@ -206,7 +199,6 @@ const ProjectExplorer = {
   },
 
   updateDiagnostics(filesWithDiagnostics) {
-    // Update file data with diagnostics
     for (const file of this.state.files) {
       const relPath = file.path || file.webkitRelativePath || file.name;
       const matching = filesWithDiagnostics.find(f => f.path === relPath);

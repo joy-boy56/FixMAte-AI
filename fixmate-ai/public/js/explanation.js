@@ -1,6 +1,7 @@
 /**
- * Explanation Module
- * Renders and manages the explanation panel
+ * Explanation Module (Chat Panel)
+ * Renders and manages the AI chat panel on the right side.
+ * Shows scan results as chat messages and handles user chat input.
  */
 
 const Explanation = {
@@ -12,45 +13,309 @@ const Explanation = {
 
   init() {
     this.cacheElements();
+    this.bindChatEvents();
   },
 
   cacheElements() {
     this.elements = {
-      empty: document.getElementById('explanation-empty'),
-      loading: document.getElementById('explanation-loading'),
-      content: document.getElementById('explanation-content'),
-      copyBtn: document.getElementById('copy-explanation-btn'),
+      chatMessages: document.getElementById('chat-messages'),
+      chatInput: document.getElementById('chat-input'),
+      chatSendBtn: document.getElementById('chat-send-btn'),
+      chatInputArea: document.getElementById('chat-input-area'),
+      chatEmptyHint: document.getElementById('chat-empty-hint'),
+      clearChatBtn: document.getElementById('clear-chat-btn'),
+      copyCodeBtn: document.getElementById('copy-code-btn'),
     };
   },
 
-  show(diagnostic, files) {
-    this.state.currentDiagnostic = diagnostic;
-    this.state.files = files;
-    this.state.currentExplanation = diagnostic.aiExplanation;
-    
-    this.elements.empty.classList.add('hidden');
-    this.elements.content.classList.add('hidden');
-    this.elements.copyBtn.classList.add('hidden');
-    
-    if (diagnostic.aiExplanation) {
-      this.renderExplanation(diagnostic.aiExplanation);
-      this.elements.content.classList.remove('hidden');
-      this.elements.copyBtn.classList.remove('hidden');
-    } else {
-      this.fetchExplanation(diagnostic);
+  bindChatEvents() {
+    // Send button
+    if (this.elements.chatSendBtn) {
+      this.elements.chatSendBtn.addEventListener('click', () => this.handleSendMessage());
+    }
+
+    // Chat input - Enter to send, Shift+Enter for newline
+    if (this.elements.chatInput) {
+      this.elements.chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.handleSendMessage();
+        }
+        // Auto-resize textarea
+        this.elements.chatInput.style.height = 'auto';
+        this.elements.chatInput.style.height = this.elements.chatInput.scrollHeight + 'px';
+      });
+    }
+
+    // Clear chat
+    if (this.elements.clearChatBtn) {
+      this.elements.clearChatBtn.addEventListener('click', () => this.clearChat());
+    }
+
+    // Copy code button
+    if (this.elements.copyCodeBtn) {
+      this.elements.copyCodeBtn.addEventListener('click', () => this.copyCurrentCode());
     }
   },
 
-  async fetchExplanation(diagnostic) {
-    this.elements.loading.classList.remove('hidden');
-    
+  showScanResult(diagnostics, files) {
+    this.state.files = files;
+
+    // Enable chat input area
+    if (this.elements.chatInputArea) {
+      this.elements.chatInputArea.style.display = 'flex';
+    }
+    if (this.elements.chatEmptyHint) {
+      this.elements.chatEmptyHint.style.display = 'none';
+    }
+
+    // Clear existing messages
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.innerHTML = '';
+    }
+
+    // Add welcome/scan summary message
+    this.addScanSummaryMessage(diagnostics, files);
+
+    // Add individual diagnostic messages
+    diagnostics.slice(0, 10).forEach(diag => {
+      this.addDiagnosticMessage(diag);
+    });
+
+    if (diagnostics.length > 10) {
+      this.addAIMessage(`...and ${diagnostics.length - 10} more issues. Scroll through the file explorer to see all files with diagnostics.`);
+    }
+
+    // Scroll to bottom
+    this.scrollToBottom();
+  },
+
+  addScanSummaryMessage(diagnostics, files) {
+    const errorCount = diagnostics.filter(d => d.type === 'error').length;
+    const warningCount = diagnostics.filter(d => d.type === 'warning').length;
+
+    let content = `Scan complete. Found ${diagnostics.length} issue${diagnostics.length !== 1 ? 's' : ''}`;
+    if (errorCount > 0) content += ` (${errorCount} error${errorCount !== 1 ? 's' : ''}`;
+    if (warningCount > 0) content += errorCount > 0 ? `, ${warningCount} warning${warningCount !== 1 ? 's' : ''}` : ` (${warningCount} warning${warningCount !== 1 ? 's' : ''}`;
+    if (errorCount > 0 || warningCount > 0) content += `).`;
+    content += ` Click on any file in the explorer to view it, or select a diagnostic below to see the AI explanation.`;
+
+    this.addAIMessage(content, { diagnostics: diagnostics.slice(0, 5) });
+  },
+
+  addDiagnosticMessage(diagnostic) {
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message diagnostic-message';
+    messageEl.dataset.diagnosticId = diagnostic.id;
+
+    const severityColor = diagnostic.type === 'error' ? 'var(--error)' : diagnostic.type === 'warning' ? 'var(--warning)' : 'var(--accent)';
+
+    messageEl.innerHTML = `
+      <div class="message-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+      </div>
+      <div class="message-content">
+        <div class="message-header" style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);">
+          <span style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: ${severityColor};">
+            ${diagnostic.type}
+          </span>
+          <span style="font-size: 0.7rem; color: var(--text-muted);">${diagnostic.code}</span>
+        </div>
+        <div class="message-text" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: var(--space-2);">
+          ${this.escapeHtml(diagnostic.message)}
+        </div>
+        <div class="message-meta" style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">
+          ${diagnostic.file}:${diagnostic.line}:${diagnostic.column}
+        </div>
+      </div>
+    `;
+
+    // Click to view explanation
+    messageEl.addEventListener('click', () => {
+      this.showDiagnosticExplanation(diagnostic);
+    });
+
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.appendChild(messageEl);
+      this.scrollToBottom();
+    }
+  },
+
+  addAIMessage(text, data = null) {
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message ai-message';
+
+    messageEl.innerHTML = `
+      <div class="message-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+      </div>
+      <div class="message-content">
+        <div class="message-text">${this.formatMessageText(text)}</div>
+      </div>
+    `;
+
+    if (data && data.diagnostics) {
+      // Add clickable diagnostic links
+      const diagnosticsEl = document.createElement('div');
+      diagnosticsEl.style.marginTop = 'var(--space-3)';
+      diagnosticsEl.style.display = 'flex';
+      diagnosticsEl.style.flexDirection = 'column';
+      diagnosticsEl.style.gap = 'var(--space-2)';
+
+      data.diagnostics.forEach(diag => {
+        const linkEl = document.createElement('div');
+        linkEl.style.padding = 'var(--space-2)';
+        linkEl.style.background = 'var(--bg-input)';
+        linkEl.style.border = '1px solid var(--border)';
+        linkEl.style.borderRadius = 'var(--radius-sm)';
+        linkEl.style.cursor = 'pointer';
+        linkEl.innerHTML = `
+          <div style="font-size: 0.75rem; font-weight: 500; color: var(--text); margin-bottom: var(--space-1);">
+            ${this.escapeHtml(diag.code)} - ${this.escapeHtml(diag.message)}
+          </div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">
+            ${this.escapeHtml(diag.file)}:${diag.line}:${diag.column}
+          </div>
+        `;
+        linkEl.addEventListener('click', () => this.showDiagnosticExplanation(diag));
+        diagnosticsEl.appendChild(linkEl);
+      });
+
+      messageEl.querySelector('.message-content').appendChild(diagnosticsEl);
+    }
+
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.appendChild(messageEl);
+      this.scrollToBottom();
+    }
+  },
+
+  formatMessageText(text) {
+    // Convert simple markdown-like formatting
+    return text
+      .replace(/\n/g, '<br>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  },
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  async showDiagnosticExplanation(diagnostic) {
+    this.state.currentDiagnostic = diagnostic;
+
+    // Add a "thinking" message
+    const thinkingEl = this.addAIMessage('Analyzing this issue...');
+
     try {
+      const explanation = await App.explainDiagnostic(diagnostic.id, diagnostic, this.state.files);
+
+      // Remove thinking message and add real explanation
+      if (thinkingEl && thinkingEl.parentNode) {
+        thinkingEl.parentNode.removeChild(thinkingEl);
+      }
+
+      this.renderExplanation(explanation);
+    } catch (err) {
+      console.error('Explain error:', err);
+      if (thinkingEl && thinkingEl.parentNode) {
+        thinkingEl.parentNode.removeChild(thinkingEl);
+      }
+      this.addAIMessage(`Failed to generate explanation: ${err.message}`);
+    }
+  },
+
+  renderExplanation(explanation) {
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message ai-message';
+
+    messageEl.innerHTML = `
+      <div class="message-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+      </div>
+      <div class="message-content">
+        <div class="message-section">
+          <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">What Happened</div>
+          <div class="section-content" style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.7; margin-bottom: var(--space-4);">
+            ${this.escapeHtml(explanation.whatHappened || 'No details available')}
+          </div>
+        </div>
+        <div class="message-section">
+          <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">Why</div>
+          <div class="section-content" style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.7; margin-bottom: var(--space-4);">
+            ${this.escapeHtml(explanation.why || 'No details available')}
+          </div>
+        </div>
+        ${explanation.recommendedFix?.code ? `
+        <div class="message-section">
+          <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">Recommended Fix</div>
+          <div style="background: var(--success-dim); border: 1px solid var(--success-dim); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--success); margin-bottom: var(--space-2);">Corrected Code</div>
+            <pre style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text); background: var(--bg-code); padding: var(--space-3); border-radius: var(--radius-sm); overflow-x: auto; white-space: pre; margin: 0;">${this.escapeHtml(explanation.recommendedFix.code)}</pre>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: var(--space-2);">${this.escapeHtml(explanation.recommendedFix.explanation || '')}</div>
+          </div>
+        </div>
+        ` : ''}
+        <div class="message-section">
+          <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">Prevention</div>
+          <div class="section-content" style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.7;">
+            ${this.escapeHtml(explanation.prevention || 'No details available')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.appendChild(messageEl);
+      this.scrollToBottom();
+    }
+  },
+
+  async handleSendMessage() {
+    if (!this.elements.chatInput) return;
+
+    const text = this.elements.chatInput.value.trim();
+    if (!text) return;
+
+    // Add user message
+    this.addUserMessage(text);
+    this.elements.chatInput.value = '';
+    this.elements.chatInput.style.height = 'auto';
+
+    // Add thinking message
+    const thinkingEl = this.addAIMessage('Thinking...');
+
+    try {
+      // Send to AI explanation endpoint with user context
       const response = await fetch('/api/explain/single', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          diagnosticId: diagnostic.id,
-          diagnostics: [diagnostic],
+          diagnosticId: 'chat-' + Date.now(),
+          diagnostics: [{
+            id: 'chat-' + Date.now(),
+            type: 'info',
+            code: 'UserQuery',
+            message: text,
+            line: 0,
+            column: 0,
+            sourceLine: '',
+            severity: 'low',
+            source: 'chat',
+            timestamp: new Date().toISOString(),
+          }],
           files: this.state.files,
           projectContext: {
             totalFiles: this.state.files.length,
@@ -59,130 +324,80 @@ const Explanation = {
           },
         }),
       });
-      
+
       const result = await response.json();
-      
-      this.elements.loading.classList.add('hidden');
-      
+
+      if (thinkingEl && thinkingEl.parentNode) {
+        thinkingEl.parentNode.removeChild(thinkingEl);
+      }
+
       if (result.success && result.data?.success) {
-        diagnostic.aiExplanation = result.data.explanation;
-        this.state.currentExplanation = result.data.explanation;
-        this.renderExplanation(result.data.explanation);
-        this.elements.content.classList.remove('hidden');
-        this.elements.copyBtn.classList.remove('hidden');
+        this.addAIMessage(result.data.explanation?.whatHappened || 'I received your message.');
       } else {
-        this.showError(result.data?.error || 'Failed to generate explanation');
+        this.addAIMessage(result.data?.error || 'Failed to process your message.');
       }
     } catch (err) {
-      this.elements.loading.classList.add('hidden');
-      this.showError(err.message);
+      if (thinkingEl && thinkingEl.parentNode) {
+        thinkingEl.parentNode.removeChild(thinkingEl);
+      }
+      this.addAIMessage(`Error: ${err.message}`);
     }
   },
 
-  renderExplanation(explanation) {
-    this.elements.content.innerHTML = `
-      <div class="explanation-section">
-        <div class="section-label">What Happened</div>
-        <div class="section-content">${this.escapeHtml(explanation.whatHappened)}</div>
-      </div>
-      <div class="explanation-section">
-        <div class="section-label">Where</div>
-        <div class="section-content">${this.escapeHtml(explanation.where)}</div>
-      </div>
-      <div class="explanation-section">
-        <div class="section-label">Why</div>
-        <div class="section-content">${this.escapeHtml(explanation.why)}</div>
-      </div>
-      <div class="explanation-section">
-        <div class="section-label">Likely Mistake</div>
-        <div class="section-content">${this.escapeHtml(explanation.likelyMistake)}</div>
-      </div>
-      ${explanation.recommendedFix?.code ? `
-      <div class="explanation-section">
-        <div class="section-label">Recommended Fix</div>
-        <div class="fix-block">
-          <div class="fix-label">Corrected Code</div>
-          <div class="fix-code">${this.escapeHtml(explanation.recommendedFix.code)}</div>
-          <div class="section-content" style="margin-top: 8px; font-size: 0.8rem;">${this.escapeHtml(explanation.recommendedFix.explanation)}</div>
-        </div>
-      </div>
-      ` : ''}
-      <div class="explanation-section">
-        <div class="section-label">Programming Concept</div>
-        <div class="section-content">${this.escapeHtml(explanation.concept)}</div>
-      </div>
-      <div class="explanation-section">
-        <div class="section-label">Verification</div>
-        <div class="section-content">${this.escapeHtml(explanation.verification)}</div>
-      </div>
-      <div class="explanation-section">
-        <div class="section-label">Prevention</div>
-        <div class="section-content">${this.escapeHtml(explanation.prevention)}</div>
-      </div>
-      ${explanation.notes ? `
-      <div class="explanation-section">
-        <div class="section-label">Notes</div>
-        <div class="section-content" style="color: var(--warning-amber);">${this.escapeHtml(explanation.notes)}</div>
-      </div>
-      ` : ''}
-    `;
-    
-    this.elements.content.classList.remove('hidden');
-    this.elements.copyBtn.classList.remove('hidden');
-    
-    // Bind copy button
-    this.elements.copyBtn.onclick = () => this.copyExplanation();
-  },
+  addUserMessage(text) {
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message user-message';
 
-  showError(message) {
-    this.elements.content.innerHTML = `
-      <div class="explanation-section">
-        <div class="section-label">Error</div>
-        <div class="section-content" style="color: var(--error-red);">${this.escapeHtml(message)}</div>
+    messageEl.innerHTML = `
+      <div class="message-content">
+        <div class="message-text" style="color: var(--text);">${this.escapeHtml(text)}</div>
       </div>
     `;
-    this.elements.content.classList.remove('hidden');
+
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.appendChild(messageEl);
+      this.scrollToBottom();
+    }
+    return messageEl;
   },
 
-  copyExplanation() {
-    if (!this.state.currentExplanation) return;
-    
-    const exp = this.state.currentExplanation;
-    const text = `FixMate - Explanation
-=======================
+  scrollToBottom() {
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+    }
+  },
 
-What Happened: ${exp.whatHappened}
-Where: ${exp.where}
-Why: ${exp.why}
-Likely Mistake: ${exp.likelyMistake}
-${exp.recommendedFix?.code ? `Recommended Fix:\n${exp.recommendedFix.code}\n\nWhy this works: ${exp.recommendedFix.explanation}` : ''}
-Concept: ${exp.concept}
-Verification: ${exp.verification}
-Prevention: ${exp.prevention}
-${exp.notes ? `Notes: ${exp.notes}` : ''}
-`;
+  clearChat() {
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.innerHTML = '';
+    }
+    this.state.currentDiagnostic = null;
+    this.state.currentExplanation = null;
+  },
 
-    navigator.clipboard.writeText(text).then(() => {
-      App.showToast('Explanation copied to clipboard');
-    }).catch(() => {
-      App.showToast('Failed to copy', true);
-    });
+  copyCurrentCode() {
+    const codeText = document.getElementById('code-text');
+    if (codeText && codeText.textContent) {
+      navigator.clipboard.writeText(codeText.textContent).then(() => {
+        App.showToast('Code copied to clipboard');
+      }).catch(() => {
+        App.showToast('Failed to copy', true);
+      });
+    }
   },
 
   clear() {
     this.state.currentDiagnostic = null;
     this.state.currentExplanation = null;
     this.state.files = [];
-    this.elements.empty.classList.remove('hidden');
-    this.elements.loading.classList.add('hidden');
-    this.elements.content.classList.add('hidden');
-    this.elements.copyBtn.classList.add('hidden');
-  },
-
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.innerHTML = '';
+    }
+    if (this.elements.chatInputArea) {
+      this.elements.chatInputArea.style.display = 'none';
+    }
+    if (this.elements.chatEmptyHint) {
+      this.elements.chatEmptyHint.style.display = 'block';
+    }
   },
 };

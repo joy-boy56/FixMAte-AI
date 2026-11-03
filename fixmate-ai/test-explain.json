@@ -1,0 +1,27 @@
+{
+  "diagnostics": [
+    {
+      "id": "test-1",
+      "type": "error",
+      "code": "SyntaxError",
+      "message": "SyntaxError: missing ) after argument list",
+      "line": 2,
+      "column": 13,
+      "sourceLine": "console.log(y",
+      "file": "test-syntax-error.js",
+      "language": "JavaScript",
+      "severity": "high"
+    }
+  ],
+  "files": [
+    {
+      "path": "test-syntax-error.js",
+      "content": "const x = 1;\nconsole.log(y"
+    }
+  ],
+  "projectContext": {
+    "totalFiles": 1,
+    "languages": ["JavaScript"],
+    "totalDiagnostics": 1
+  }
+}

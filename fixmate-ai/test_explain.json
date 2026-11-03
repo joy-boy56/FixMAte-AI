@@ -1,0 +1,32 @@
+{
+  "diagnosticId": "f11041e1-d2d5-4e29-a8b7-09f8a14531f4",
+  "diagnostics": [{
+    "id": "f11041e1-d2d5-4e29-a8b7-09f8a14531f4",
+    "file": "test-syntax-error.js",
+    "language": "JavaScript",
+    "type": "error",
+    "code": "SyntaxError",
+    "message": "SyntaxError: missing ) after argument list",
+    "line": 1692,
+    "column": 18,
+    "sourceLine": "",
+    "severity": "high",
+    "source": "parser",
+    "timestamp": "2026-11-01T18:01:46.219Z"
+  }],
+  "files": [{
+    "path": "test-syntax-error.js",
+    "status": "supported",
+    "reason": null,
+    "size": 26,
+    "language": "JavaScript",
+    "extension": ".js",
+    "content": "const x = 1;\nconsole.log(y",
+    "lines": 2
+  }],
+  "projectContext": {
+    "totalFiles": 1,
+    "languages": ["JavaScript"],
+    "totalDiagnostics": 1
+  }
+}

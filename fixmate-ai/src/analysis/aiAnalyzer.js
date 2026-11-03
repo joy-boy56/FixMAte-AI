@@ -8,7 +8,7 @@ const OpenAI = require('openai');
 const client = new OpenAI({
   baseURL: 'https://integrate.api.nvidia.com/v1',
   apiKey: process.env.NVIDIA_API_KEY,
-  timeout: 120000,
+  timeout: 60000,
   maxRetries: 2,
 });
 
@@ -96,21 +96,27 @@ ${content}
  * Analyze a single file using AI
  */
 async function analyzeFileWithAI(filePath, language, content) {
+  console.log(`[AI Analyzer] Starting analysis for ${filePath} (${language}, ${content.length} chars)`);
+  
   if (!process.env.NVIDIA_API_KEY) {
+    console.error('[AI Analyzer] NVIDIA_API_KEY not set!');
     return {
       success: false,
       issues: [],
       error: 'AI service not configured. Set NVIDIA_API_KEY environment variable.',
     };
   }
+  console.log('[AI Analyzer] API key present, length:', process.env.NVIDIA_API_KEY.length);
 
   // Skip empty files
   if (!content || content.trim().length === 0) {
+    console.log('[AI Analyzer] Empty file, skipping');
     return { success: true, issues: [], summary: { totalIssues: 0, errors: 0, warnings: 0, info: 0 } };
   }
 
   try {
     const prompt = buildAnalysisPrompt(filePath, language, content);
+    console.log('[AI Analyzer] Sending request to Nemotron...');
 
     const completion = await client.chat.completions.create({
       model: 'nvidia/nemotron-3-ultra-550b-a55b',
@@ -123,10 +129,13 @@ async function analyzeFileWithAI(filePath, language, content) {
       response_format: { type: 'json_object' },
     });
 
+    console.log('[AI Analyzer] Received response from Nemotron');
     const responseContent = completion.choices[0]?.message?.content;
     if (!responseContent) {
       throw new Error('Empty response from AI model');
     }
+
+    console.log('[AI Analyzer] Response content length:', responseContent.length);
 
     let parsed;
     try {
@@ -144,6 +153,8 @@ async function analyzeFileWithAI(filePath, language, content) {
         throw new Error('Failed to parse AI response as JSON');
       }
     }
+
+    console.log('[AI Analyzer] Parsed response, issues found:', (parsed.issues || []).length);
 
     // Validate and sanitize response
     const issues = (parsed.issues || []).map(issue => ({
@@ -175,7 +186,7 @@ async function analyzeFileWithAI(filePath, language, content) {
       summary,
     };
   } catch (err) {
-    console.error(`AI analysis error for ${filePath}:`, err);
+    console.error(`[AI Analyzer] Error for ${filePath}:`, err);
     return {
       success: false,
       issues: [],
