@@ -4,7 +4,7 @@
  */
 
 const { processFiles, processFolderFiles } = require('../upload/fileHandler');
-const { analyzeFilesWithAI } = require('./aiAnalyzer');
+const { analyzeFilesWithAI, generateGeneralAnalysis } = require('./aiAnalyzer');
 const { sortDiagnostics } = require('./diagnosticNormalizer');
 const crypto = require('crypto');
 
@@ -60,7 +60,10 @@ async function scanProject(files, options = {}) {
       summary.byLanguage[diag.language] = (summary.byLanguage[diag.language] || 0) + 1;
     }
     
-    // Step 7: Prepare response
+    // Step 7: Generate general analysis
+    const generalAnalysis = await generateGeneralAnalysis(sorted, processed.files);
+    
+    // Step 8: Prepare response
     const scanTime = Date.now() - startTime;
     
     return {
@@ -75,6 +78,7 @@ async function scanProject(files, options = {}) {
         },
       },
       diagnostics: sorted,
+      generalAnalysis,
       skipped: processed.files.filter(f => f.status === 'skipped'),
     };
   } catch (err) {

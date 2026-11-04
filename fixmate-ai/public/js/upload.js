@@ -291,6 +291,9 @@ const Upload = {
     ProjectExplorer.clear();
     Explanation.clear();
     Diagnostics.clear();
+    if (window.Diagnostics && Diagnostics.clearErrorPanel) {
+      Diagnostics.clearErrorPanel();
+    }
 
     App.showToast('Project cleared');
   },

@@ -58,15 +58,15 @@ const Explanation = {
     }
   },
 
-  showScanResult(diagnostics, files) {
+  showScanResult(diagnostics, files, generalAnalysis = null) {
     this.state.files = files;
 
     // Enable chat input area
     if (this.elements.chatInputArea) {
-      this.elements.chatInputArea.style.display = 'flex';
+      this.elements.chatInputArea.classList.remove('hidden');
     }
     if (this.elements.chatEmptyHint) {
-      this.elements.chatEmptyHint.style.display = 'none';
+      this.elements.chatEmptyHint.classList.add('hidden');
     }
 
     // Clear existing messages
@@ -74,16 +74,12 @@ const Explanation = {
       this.elements.chatMessages.innerHTML = '';
     }
 
-    // Add welcome/scan summary message
-    this.addScanSummaryMessage(diagnostics, files);
-
-    // Add individual diagnostic messages
-    diagnostics.slice(0, 10).forEach(diag => {
-      this.addDiagnosticMessage(diag);
-    });
-
-    if (diagnostics.length > 10) {
-      this.addAIMessage(`...and ${diagnostics.length - 10} more issues. Scroll through the file explorer to see all files with diagnostics.`);
+    // Show General Analysis in AI Assistant (NOT individual errors)
+    if (generalAnalysis) {
+      this.addGeneralAnalysisMessage(generalAnalysis);
+    } else {
+      // Fallback: simple scan summary if no general analysis
+      this.addScanSummaryMessage(diagnostics, files);
     }
 
     // Scroll to bottom
@@ -101,6 +97,127 @@ const Explanation = {
     content += ` Click on any file in the explorer to view it, or select a diagnostic below to see the AI explanation.`;
 
     this.addAIMessage(content, { diagnostics: diagnostics.slice(0, 5) });
+  },
+
+  addGeneralAnalysisMessage(generalAnalysis) {
+    console.log('[Explanation] addGeneralAnalysisMessage called with:', generalAnalysis);
+    console.log('[Explanation] generalAnalysis type:', typeof generalAnalysis, Array.isArray(generalAnalysis));
+    console.log('[Explanation] generalAnalysis keys:', generalAnalysis ? Object.keys(generalAnalysis) : 'null/undefined');
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message ai-message general-analysis-message';
+
+    let content = `<div class="message-section">
+      <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: var(--space-2);">General Analysis</div>
+      <div class="section-content" style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.7; margin-bottom: var(--space-4);">
+        ${this.escapeHtml(generalAnalysis.summary || 'No summary available')}
+      </div>
+    </div>`;
+
+    if (generalAnalysis.patterns && generalAnalysis.patterns.length > 0) {
+      content += `<div class="message-section">
+        <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">Patterns Detected</div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+          ${generalAnalysis.patterns.map(p => `
+            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3);">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
+                <span style="font-weight: 500; color: var(--text);">${this.escapeHtml(p.pattern)}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${p.severity === 'high' ? 'var(--error-dim)' : p.severity === 'medium' ? 'var(--warning-dim)' : 'var(--accent-dim)'}; color: ${p.severity === 'high' ? 'var(--error)' : p.severity === 'medium' ? 'var(--warning)' : 'var(--accent)'}">${p.severity}</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: var(--space-2);">${this.escapeHtml(p.description)}</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Affected: ${p.affectedFiles?.join(', ') || 'N/A'}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    }
+
+    if (generalAnalysis.priorities && generalAnalysis.priorities.length > 0) {
+      content += `<div class="message-section">
+        <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">Priority Fixes</div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+          ${generalAnalysis.priorities.slice(0, 5).map(p => `
+            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer;" data-file="${this.escapeHtml(p.file)}" data-line="${p.line}" data-diagnostic="${this.escapeHtml(p.diagnostic)}">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
+                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(p.file)}:${p.line}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${p.priority === 'critical' ? 'var(--error-dim)' : p.priority === 'high' ? 'var(--warning-dim)' : 'var(--accent-dim)'}; color: ${p.priority === 'critical' ? 'var(--error)' : p.priority === 'high' ? 'var(--warning)' : 'var(--accent)'}">${p.priority}</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: var(--space-1);">${this.escapeHtml(p.diagnostic)}</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted);">${this.escapeHtml(p.reason)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    }
+
+    if (generalAnalysis.quickWins && generalAnalysis.quickWins.length > 0) {
+      content += `<div class="message-section">
+        <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--success); margin-bottom: var(--space-2);">Quick Wins</div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+          ${generalAnalysis.quickWins.slice(0, 5).map(qw => `
+            <div style="background: var(--success-dim); border: 1px solid var(--success); border-radius: var(--radius-sm); padding: var(--space-3);">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
+                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(qw.file)}:${qw.line}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${qw.effort === 'high' ? 'var(--warning-dim)' : 'var(--success-dim)'}; color: ${qw.effort === 'high' ? 'var(--warning)' : 'var(--success)'}">${qw.effort}</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary);">${this.escapeHtml(qw.fix)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    }
+
+    if (generalAnalysis.normalFixes && generalAnalysis.normalFixes.length > 0) {
+      content += `<div class="message-section">
+        <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: var(--space-2);">Normal Fixes</div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+          ${generalAnalysis.normalFixes.slice(0, 5).map(nf => `
+            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer;" data-file="${this.escapeHtml(nf.file)}" data-line="${nf.line}" data-diagnostic="${this.escapeHtml(nf.issue)}">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
+                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(nf.file)}:${nf.line}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${nf.effort === 'high' ? 'var(--warning-dim)' : nf.effort === 'medium' ? 'var(--accent-dim)' : 'var(--success-dim)'}; color: ${nf.effort === 'high' ? 'var(--warning)' : nf.effort === 'medium' ? 'var(--accent)' : 'var(--success)'}">${nf.effort}</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: var(--space-1);">${this.escapeHtml(nf.fix)}</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted);">${this.escapeHtml(nf.explanation || '')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    }
+
+    messageEl.innerHTML = `
+      <div class="message-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+      </div>
+      <div class="message-content">
+        ${content}
+      </div>
+    `;
+
+    // Add click handlers for priority items
+    messageEl.querySelectorAll('[data-file][data-line]').forEach(el => {
+      el.addEventListener('click', () => {
+        const file = el.dataset.file;
+        const line = parseInt(el.dataset.line, 10);
+        const diagnosticCode = el.dataset.diagnostic;
+        // Find the diagnostic and show explanation
+        const diag = this.state.files.flatMap(f => f.diagnostics || []).find(d => d.file === file && d.line === line && d.code === diagnosticCode);
+        if (diag) {
+          this.showDiagnosticExplanation(diag);
+        } else {
+          // Navigate to file and line
+          App.showFileInEditor(file, line);
+        }
+      });
+    });
+
+    if (this.elements.chatMessages) {
+      this.elements.chatMessages.appendChild(messageEl);
+      this.scrollToBottom();
+    }
   },
 
   addDiagnosticMessage(diagnostic) {
@@ -394,10 +511,12 @@ const Explanation = {
       this.elements.chatMessages.innerHTML = '';
     }
     if (this.elements.chatInputArea) {
-      this.elements.chatInputArea.style.display = 'none';
+      this.elements.chatInputArea.classList.add('hidden');
     }
     if (this.elements.chatEmptyHint) {
-      this.elements.chatEmptyHint.style.display = 'block';
+      this.elements.chatEmptyHint.classList.remove('hidden');
     }
   },
 };
+
+window.Explanation = Explanation;

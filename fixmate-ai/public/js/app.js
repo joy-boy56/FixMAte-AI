@@ -253,15 +253,27 @@ const App = {
       }
 
       console.log('[App] Scan successful, diagnostics:', result.data.diagnostics?.length);
+      console.log('[App] Backend files:', result.data.project.files.map(f => ({path: f.path, name: f.name})));
+      console.log('[App] Backend diagnostics files:', [...new Set(result.data.diagnostics.map(d => d.file))]);
 
       this.state.scanResult = result.data;
 
+      // Attach diagnostics to each file
+      const filesWithDiagnostics = result.data.project.files.map(file => {
+        const fileDiagnostics = result.data.diagnostics.filter(d => d.file === file.path);
+        console.log('[App] File:', file.path, '-> diagnostics:', fileDiagnostics.length);
+        return { ...file, diagnostics: fileDiagnostics };
+      });
+
+      // Set diagnostics state for error panel
+      Diagnostics.setDiagnostics(result.data.diagnostics, filesWithDiagnostics);
+
       // Update UI with results
-      ProjectExplorer.updateDiagnostics(result.data.project.files);
+      ProjectExplorer.updateDiagnostics(filesWithDiagnostics);
       ProjectExplorer.updateSummaryStats(result.data.project.summary);
 
       // Send scan results to chat
-      Explanation.showScanResult(result.data.diagnostics, result.data.project.files);
+      Explanation.showScanResult(result.data.diagnostics, result.data.project.files, result.data.generalAnalysis);
 
       Upload.updateProgress(100, 'Scan complete!', 'done');
 
@@ -313,6 +325,7 @@ const App = {
 
   showFileInEditor(file) {
     this.state.currentFile = file;
+    console.log('[App] showFileInEditor called with file:', { name: file.name, path: file.path, hasDiagnostics: !!file.diagnostics, diagnosticsCount: file.diagnostics?.length });
 
     // Update editor title
     const filenameEl = document.getElementById('editor-filename');
@@ -353,6 +366,11 @@ const App = {
     const diagnostics = file.diagnostics || [];
     if (diagnostics.length > 0) {
       this.highlightErrorLines(diagnostics);
+    }
+
+    // Render error panel for this file
+    if (window.Diagnostics) {
+      Diagnostics.renderErrorPanel(file.path);
     }
   },
 
