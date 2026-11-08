@@ -12,6 +12,7 @@ require('dotenv').config();
 const healthRoutes = require('./src/server/routes/health');
 const scanRoutes = require('./src/server/routes/scan');
 const explainRoutes = require('./src/server/routes/explain');
+const { warnMissingEnv, getAvailableModes, getDefaultModeId, getProviderName } = require('./src/config/aiModels');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -74,4 +75,13 @@ app.listen(PORT, () => {
   console.log(`Health check: http://localhost:${PORT}/api/health`);
   console.log(`Scan endpoint: http://localhost:${PORT}/api/scan`);
   console.log(`Explain endpoint: http://localhost:${PORT}/api/explain`);
+
+  // Report the active AI configuration so a misconfigured .env is visible
+  // in the startup log rather than surfacing later as a confusing failure.
+  warnMissingEnv();
+  console.log(`AI provider: ${getProviderName()}`);
+  for (const mode of getAvailableModes()) {
+    const marker = mode.id === getDefaultModeId() ? ' (default)' : '';
+    console.log(`  ${mode.label}: ${mode.model}${marker}`);
+  }
 });

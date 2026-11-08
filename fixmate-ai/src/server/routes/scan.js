@@ -6,8 +6,22 @@
 const express = require('express');
 const multer = require('multer');
 const { scanProject, scanProjectFolder, getFileContext, getFilesWithDiagnostics } = require('../../analysis/scanProject');
+const { readMode: readModeFrom, resolveMode, sanitizeAiError } = require('../../config/aiModels');
 
 const router = express.Router();
+
+/**
+ * Read and validate the requested analysis mode.
+ * An unknown mode falls back to the server default rather than failing the
+ * request, so a stale client can never trigger a broken scan.
+ */
+function readMode(req) {
+  const mode = readModeFrom(req.body);
+  if (mode === undefined && typeof req.body?.mode === 'string' && req.body.mode !== '') {
+    console.warn(`[Scan] Unknown mode "${req.body.mode.slice(0, 32)}", using default mode`);
+  }
+  return mode;
+}
 
 // Configure multer for file uploads
 const upload = multer({
@@ -30,6 +44,7 @@ router.post('/scan', upload.array('files', 200), async (req, res) => {
   try {
     const files = req.files || [];
     const projectName = req.body.projectName || req.body.name || 'Uploaded Project';
+    const mode = readMode(req);
     
     if (files.length === 0) {
       return res.status(400).json({
@@ -43,9 +58,9 @@ router.post('/scan', upload.array('files', 200), async (req, res) => {
     
     let result;
     if (isFolderUpload) {
-      result = await scanProjectFolder(files, { projectName });
+      result = await scanProjectFolder(files, { projectName, mode });
     } else {
-      result = await scanProject(files, { projectName });
+      result = await scanProject(files, { projectName, mode });
     }
     
     if (!result.success) {
@@ -57,13 +72,14 @@ router.post('/scan', upload.array('files', 200), async (req, res) => {
     
     res.json({
       success: true,
+      mode: resolveMode(mode).id,
       data: result,
     });
   } catch (err) {
     console.error('Scan error:', err);
     res.status(500).json({
       success: false,
-      error: err.message || 'Scan failed',
+      error: sanitizeAiError(err, 'Scan failed.'),
     });
   }
 });
@@ -76,6 +92,7 @@ router.post('/scan/folder', upload.array('files', 200), async (req, res) => {
   try {
     const files = req.files || [];
     const projectName = req.body.projectName || 'Folder Upload';
+    const mode = readMode(req);
     
     if (files.length === 0) {
       return res.status(400).json({
@@ -84,7 +101,7 @@ router.post('/scan/folder', upload.array('files', 200), async (req, res) => {
       });
     }
     
-    const result = await scanProjectFolder(files, { projectName });
+    const result = await scanProjectFolder(files, { projectName, mode });
     
     if (!result.success) {
       return res.status(500).json({
@@ -95,13 +112,14 @@ router.post('/scan/folder', upload.array('files', 200), async (req, res) => {
     
     res.json({
       success: true,
+      mode: resolveMode(mode).id,
       data: result,
     });
   } catch (err) {
     console.error('Folder scan error:', err);
     res.status(500).json({
       success: false,
-      error: err.message || 'Folder scan failed',
+      error: sanitizeAiError(err, 'Folder scan failed.'),
     });
   }
 });
@@ -137,9 +155,10 @@ router.post('/scan/zip', zipUpload.single('zip'), async (req, res) => {
     // Convert single ZIP file to array format
     const files = [req.file];
     const projectName = req.body.projectName || req.file.originalname.replace('.zip', '');
+    const mode = readMode(req);
     
     // The fileHandler will detect and extract the ZIP
-    const result = await scanProject(files, { projectName });
+    const result = await scanProject(files, { projectName, mode });
     
     if (!result.success) {
       return res.status(500).json({
@@ -150,13 +169,14 @@ router.post('/scan/zip', zipUpload.single('zip'), async (req, res) => {
     
     res.json({
       success: true,
+      mode: resolveMode(mode).id,
       data: result,
     });
   } catch (err) {
     console.error('ZIP scan error:', err);
     res.status(500).json({
       success: false,
-      error: err.message || 'ZIP scan failed',
+      error: sanitizeAiError(err, 'ZIP scan failed.'),
     });
   }
 });

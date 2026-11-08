@@ -8,10 +8,13 @@ const App = {
     isScanning: false,
     scanResult: null,
     currentFile: null,
+    aiMode: 'fast',
+    aiModes: [],
   },
 
   init() {
     this.initTheme();
+    this.initModeToggle();
     this.checkHealth();
     Upload.init();
     ProjectExplorer.init();
@@ -33,6 +36,77 @@ const App = {
     }
 
     themeToggle.addEventListener('click', () => this.toggleTheme());
+  },
+
+  /**
+   * Analysis mode toggle (Fast / Max).
+   * Labels and model names come from /api/health so nothing is hardcoded here.
+   */
+  initModeToggle() {
+    const toggle = document.getElementById('mode-toggle');
+    if (!toggle) return;
+
+    // Restore last used mode
+    const savedMode = localStorage.getItem('aiMode');
+    if (savedMode) {
+      this.state.aiMode = savedMode;
+    }
+
+    toggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mode-btn');
+      if (!btn) return;
+      const mode = btn.dataset.mode;
+      if (!mode || mode === this.state.aiMode) return;
+      this.setAIMode(mode);
+    });
+
+    this.renderModeToggle();
+  },
+
+  renderModeToggle() {
+    const toggle = document.getElementById('mode-toggle');
+    if (!toggle) return;
+
+    // Capture the static fallback markup before it is cleared.
+    const fallbackModes = Array.from(toggle.querySelectorAll('.mode-btn')).map((btn) => ({
+      id: btn.dataset.mode,
+      label: btn.textContent,
+      model: '',
+      description: '',
+    }));
+
+    // Built with DOM nodes rather than innerHTML: the labels, descriptions and
+    // model names come from the server, so they must never be parsed as HTML.
+    toggle.replaceChildren();
+
+    const modes = this.state.aiModes.length > 0 ? this.state.aiModes : fallbackModes;
+
+    for (const m of modes) {
+      const active = m.id === this.state.aiMode;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = active ? 'mode-btn active' : 'mode-btn';
+      btn.dataset.mode = String(m.id);
+      btn.setAttribute('aria-pressed', String(active));
+      btn.title = m.model ? `${m.description} - ${m.model}` : String(m.description || '');
+      btn.textContent = String(m.label);
+      toggle.appendChild(btn);
+    }
+  },
+
+  setAIMode(mode) {
+    this.state.aiMode = mode;
+    localStorage.setItem('aiMode', mode);
+    this.renderModeToggle();
+
+    const active = this.getActiveMode();
+    const label = active ? active.label : mode;
+    const model = active ? active.model : '';
+    this.showToast(`${label} mode selected${model ? ` (${model})` : ''}`);
+  },
+
+  getActiveMode() {
+    return this.state.aiModes.find((m) => m.id === this.state.aiMode) || null;
   },
 
   toggleTheme() {
@@ -179,7 +253,22 @@ const App = {
   },
 
   updateAIStatus(aiProvider) {
-    // Could show AI status in header
+    if (!aiProvider) return;
+
+    // Modes are server-authoritative: labels + model names come from the API
+    if (Array.isArray(aiProvider.modes) && aiProvider.modes.length > 0) {
+      this.state.aiModes = aiProvider.modes;
+
+      // Fall back to the server default if the saved mode is unknown
+      const ids = this.state.aiModes.map((m) => m.id);
+      if (!ids.includes(this.state.aiMode)) {
+        this.state.aiMode = aiProvider.defaultMode || ids[0];
+        // Persist the correction so the stale value is not re-evaluated on
+        // every page load.
+        localStorage.setItem('aiMode', this.state.aiMode);
+      }
+      this.renderModeToggle();
+    }
   },
 
   async scanProject() {
@@ -205,6 +294,7 @@ const App = {
       // Prepare form data
       const formData = new FormData();
       formData.append('projectName', projectName);
+      formData.append('mode', this.state.aiMode);
 
       for (const fileWrapper of fileWrappers) {
         if (fileWrapper._pasteContent) {
@@ -235,7 +325,16 @@ const App = {
       if (isZip) endpoint = '/api/scan/zip';
       else if (isFolder) endpoint = '/api/scan/folder';
 
-      Upload.updateProgress(10, 'Uploading files...', 'upload');
+      const activeMode = this.getActiveMode();
+      const modeLabel = activeMode ? activeMode.label : this.state.aiMode;
+      const modeModel = activeMode ? activeMode.model : '';
+      Upload.updateProgress(
+        10,
+        modeModel
+          ? `Analyzing with ${modeLabel} (${modeModel})...`
+          : `Analyzing with ${modeLabel} mode...`,
+        'upload'
+      );
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -280,7 +379,17 @@ const App = {
       await this.delay(500);
       Upload.hideScanProgress();
 
-      this.showToast(`Scan complete: ${result.data.diagnostics.length} diagnostics found`);
+      // Distinguish "no issues found" from "the AI could not analyze the
+      // files" - a silent zero-result scan is a false negative.
+      const aiInfo = result.data.ai;
+      if (aiInfo && aiInfo.failedFiles > 0) {
+        this.showToast(
+          `Scan complete: ${result.data.diagnostics.length} diagnostics found, but AI analysis failed for ${aiInfo.failedFiles} file(s) - results may be incomplete`,
+          true
+        );
+      } else {
+        this.showToast(`Scan complete: ${result.data.diagnostics.length} diagnostics found`);
+      }
 
     } catch (err) {
       console.error('Scan error:', err);
@@ -306,6 +415,7 @@ const App = {
             languages: [...new Set(files.map(f => f.language).filter(l => l !== 'Unknown'))],
             totalDiagnostics: files.reduce((sum, f) => sum + (f.diagnostics?.length || 0), 0),
           },
+          mode: this.state.aiMode,
         }),
       });
 

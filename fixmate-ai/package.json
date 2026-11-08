@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:browser": "node test/browser-toggle.browser.js && node test/browser-general-analysis.browser.js && node test/browser-xss.browser.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.12",

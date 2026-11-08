@@ -1,16 +1,87 @@
 /**
  * AI-Powered Code Analyzer
- * Uses NVIDIA Nemotron to detect errors and provide explanations in a single call
+ * Uses NVIDIA Nemotron (or any OpenAI-compatible model) to detect errors
+ * and provide explanations in a single call.
+ *
+ * Model selection is controlled by src/config/aiModels.js (env-driven).
  */
 
-const OpenAI = require('openai');
+const crypto = require('crypto');
+const { createCompletion, resolveMode, hasApiKey, sanitizeAiError } = require('../config/aiModels');
 
-const client = new OpenAI({
-  baseURL: 'https://integrate.api.nvidia.com/v1',
-  apiKey: process.env.NVIDIA_API_KEY,
-  timeout: 60000,
-  maxRetries: 2,
-});
+// Maximum number of diagnostics that get their own entry in the general
+// analysis "priorities" / "quickWins" / "normalFixes" arrays. Keeps the
+// response within the token budget on large projects.
+const MAX_FOCUS_DIAGNOSTICS = 12;
+
+// Maximum number of recurring patterns reported. Patterns are grouped by
+// diagnostic code, so a project with many distinct codes would otherwise
+// produce an unbounded array.
+const MAX_PATTERNS = 25;
+
+// Token budget for the general analysis call. Scaled with the number of
+// focus diagnostics, but never exceeds the mode budget (a model may reject a
+// larger request) and never exceeds 4096 (the largest budget the configured
+// models reliably accept).
+const GENERAL_ANALYSIS_MIN_TOKENS = 1200;
+const GENERAL_ANALYSIS_MAX_TOKENS = 4096;
+const TOKENS_PER_FOCUS_DIAGNOSTIC = 140;
+
+// Severity ranking used to pick the diagnostics that get a dedicated fix.
+const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
+
+/**
+ * Normalise an AI-provided diagnostic type into one of error/warning/info.
+ * The type is model-controlled, so an unexpected value must never throw.
+ */
+function normalizeDiagnosticType(type) {
+  const t = String(type || '').toLowerCase().trim();
+  if (t === 'error' || t === 'critical' || t === 'fatal') return 'error';
+  if (t === 'warning' || t === 'warn') return 'warning';
+  return 'info';
+}
+
+/**
+ * Normalise an AI-provided severity into one of high/medium/low.
+ * Severity is model-controlled and is used as an object key downstream, so
+ * an unexpected value must never be able to poison the counters.
+ */
+function normalizeSeverity(severity) {
+  const s = String(severity || '').toLowerCase().trim();
+  if (s === 'high' || s === 'critical' || s === 'error') return 'high';
+  if (s === 'low' || s === 'minor' || s === 'info') return 'low';
+  return 'medium';
+}
+
+/**
+ * Token budget for the general analysis call.
+ *
+ * Derived from the number of focus diagnostics but always clamped to the
+ * mode's own budget - the configured models reject a request for more tokens
+ * than they accept.
+ */
+function generalAnalysisMaxTokens(modeMaxTokens, focusCount) {
+  const derived = focusCount * TOKENS_PER_FOCUS_DIAGNOSTIC + 600;
+  return Math.min(
+    modeMaxTokens,
+    GENERAL_ANALYSIS_MAX_TOKENS,
+    Math.max(GENERAL_ANALYSIS_MIN_TOKENS, derived)
+  );
+}
+
+/**
+ * How many diagnostics can get a dedicated fix within the mode's budget.
+ *
+ * Each focus diagnostic needs an entry in priorities, quickWins and
+ * normalFixes, so the count has to be derived from the token budget -
+ * otherwise a small budget truncates the JSON response.
+ */
+function focusDiagnosticLimit(modeMaxTokens) {
+  const affordable = Math.floor(
+    (modeMaxTokens - 600) / TOKENS_PER_FOCUS_DIAGNOSTIC
+  );
+  return Math.max(1, Math.min(MAX_FOCUS_DIAGNOSTICS, affordable));
+}
 
 /**
  * System prompt for AI code analysis
@@ -26,7 +97,7 @@ Analyze the provided code file and identify ALL issues including:
 5. Security issues (eval, SQL injection, XSS vulnerabilities)
 6. Performance issues (inefficient algorithms, memory leaks)
 
-For each issue found, provide a detailed explanation.
+For each issue found, provide a concise explanation.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -40,21 +111,7 @@ Return ONLY valid JSON in this exact format:
       "column": 1,
       "sourceLine": "the problematic line of code",
       "severity": "high|medium|low",
-      "explanation": {
-        "whatHappened": "What specific error/issue occurred",
-        "where": "file:line:column",
-        "why": "Why this issue occurred in plain language",
-        "likelyMistake": "What the developer likely did wrong",
-        "recommendedFix": {
-          "code": "Corrected code snippet",
-          "explanation": "Why this fix works"
-        },
-        "concept": "The programming concept being misunderstood",
-        "verification": "How to verify the fix works",
-        "prevention": "How to avoid this mistake in the future",
-        "confidence": "high|medium|low",
-        "notes": "Additional context if needed"
-      }
+      "explanation": "Concise explanation of the issue and the fix in one sentence"
     }
   ],
   "summary": {
@@ -75,7 +132,8 @@ IMPORTANT RULES:
 - The sourceLine should be the exact line from the code
 - Be thorough but don't hallucinate issues that don't exist
 - Distinguish between parser-reported facts and your inferences
-- Use "likely" or "probably" for inferred causes`;
+- Use "likely" or "probably" for inferred causes
+- Keep explanation to ONE concise sentence per issue`;
 }
 
 /**
@@ -95,18 +153,18 @@ ${content}
 /**
  * Analyze a single file using AI
  */
-async function analyzeFileWithAI(filePath, language, content) {
+async function analyzeFileWithAI(filePath, language, content, modeId) {
   console.log(`[AI Analyzer] Starting analysis for ${filePath} (${language}, ${content.length} chars)`);
   
-  if (!process.env.NVIDIA_API_KEY) {
-    console.error('[AI Analyzer] NVIDIA_API_KEY not set!');
+  if (!hasApiKey()) {
+    console.error('[AI Analyzer] No AI API key configured!');
     return {
       success: false,
       issues: [],
-      error: 'AI service not configured. Set NVIDIA_API_KEY environment variable.',
+      error: 'AI service not configured. Set AI_API_KEY (or NVIDIA_API_KEY) in .env.',
     };
   }
-  console.log('[AI Analyzer] API key present, length:', process.env.NVIDIA_API_KEY.length);
+  console.log('[AI Analyzer] API key present');
 
   // Skip empty files
   if (!content || content.trim().length === 0) {
@@ -114,53 +172,39 @@ async function analyzeFileWithAI(filePath, language, content) {
     return { success: true, issues: [], summary: { totalIssues: 0, errors: 0, warnings: 0, info: 0 } };
   }
 
+  const mode = resolveMode(modeId);
+
   try {
     const prompt = buildAnalysisPrompt(filePath, language, content);
-    console.log('[AI Analyzer] Sending request to Nemotron...');
+    console.log(`[AI Analyzer] Sending request (mode=${mode.id}, model=${mode.model})...`);
 
-    // Try ultra model first, fall back to super model if it fails
-    const models = [
-      'nvidia/nemotron-3-ultra-550b-a55b',
-      'nvidia/nemotron-3.5-super-vl-120b-a12b'
-    ];
-    
-    let completion;
-    let lastError;
-    
-    for (const model of models) {
-      try {
-        console.log(`[AI Analyzer] Trying model: ${model}`);
-        completion = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: 'system', content: getAnalysisSystemPrompt() },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.1,
-          max_tokens: 4096,
-          response_format: { type: 'json_object' },
-        });
-        console.log(`[AI Analyzer] Success with model: ${model}`);
-        break;
-      } catch (modelErr) {
-        console.warn(`[AI Analyzer] Model ${model} failed:`, modelErr.message);
-        lastError = modelErr;
-        continue;
+    // createCompletion tries the mode's primary model, then its fallback.
+    // The validate callback runs inside that loop, so a primary model that
+    // answers with empty content also triggers the fallback.
+    const { completion, modelUsed } = await createCompletion(
+      modeId,
+      {
+        messages: [
+          { role: 'system', content: getAnalysisSystemPrompt() },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      },
+      (c) => {
+        if (!c?.choices?.[0]?.message?.content) {
+          throw new Error('Empty response from AI model');
+        }
       }
-    }
-    
-    if (!completion) {
-      throw lastError || new Error('All models failed');
-    }
+    );
 
-    console.log('[AI Analyzer] Received response from Nemotron');
+    console.log(`[AI Analyzer] Response from model: ${modelUsed}`);
     const responseContent = completion.choices[0]?.message?.content;
     if (!responseContent) {
       throw new Error('Empty response from AI model');
     }
 
     console.log('[AI Analyzer] Response content length:', responseContent.length);
-    console.log('[AI Analyzer] Response preview:', responseContent.slice(0, 500));
 
     // Extract JSON from response (handle markdown code fences, extra text, etc.)
     let jsonStr = responseContent.trim();
@@ -213,25 +257,38 @@ async function analyzeFileWithAI(filePath, language, content) {
         console.log('[AI Analyzer] JSON recovered successfully');
       } catch (e2) {
         console.error('[AI Analyzer] Failed to parse JSON even after recovery');
-        console.error('[AI Analyzer] Raw response:', responseContent);
+        console.error(
+          '[AI Analyzer] Failed to parse AI response as JSON (length=' +
+            responseContent.length +
+            ')'
+        );
         throw new Error('Failed to parse AI response as JSON: ' + e.message);
       }
     }
 
     console.log('[AI Analyzer] Parsed response, issues found:', (parsed.issues || []).length);
 
-    // Validate and sanitize response
+    // Validate and sanitize response.
+    // line/column are coerced to numbers because the model controls them and
+    // they are rendered back into the UI.
+    const toPos = (value, fallback, minimum) => {
+      if (typeof value === 'boolean') return fallback;
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < minimum) return fallback;
+      return Math.floor(n);
+    };
     const issues = (parsed.issues || []).map(issue => ({
       id: issue.id || crypto.randomUUID(),
       file: filePath,
       language,
-      type: issue.type || 'error',
-      code: issue.code || 'Unknown',
+      type: normalizeDiagnosticType(issue.type),
+      code: String(issue.code || 'Unknown'),
       message: issue.message || 'Unknown issue',
-      line: issue.line || 1,
-      column: issue.column || 0,
+      // Lines are 1-based; columns are 0-based.
+      line: toPos(issue.line, 1, 1),
+      column: toPos(issue.column, 0, 0),
       sourceLine: issue.sourceLine || '',
-      severity: issue.severity || 'medium',
+      severity: normalizeSeverity(issue.severity),
       explanation: issue.explanation || null,
       source: 'ai',
       timestamp: new Date().toISOString(),
@@ -248,6 +305,7 @@ async function analyzeFileWithAI(filePath, language, content) {
       success: true,
       issues,
       summary,
+      modelUsed,
     };
   } catch (err) {
     console.error(`[AI Analyzer] Error for ${filePath}:`, err);
@@ -264,13 +322,14 @@ async function analyzeFileWithAI(filePath, language, content) {
  */
 async function analyzeFilesWithAI(files, options = {}) {
   const concurrency = options.concurrency || 3;
+  const mode = options.mode;
   const results = [];
   
   // Process in batches
   for (let i = 0; i < files.length; i += concurrency) {
     const batch = files.slice(i, i + concurrency);
     const batchPromises = batch.map(file => 
-      analyzeFileWithAI(file.path, file.language, file.content)
+      analyzeFileWithAI(file.path, file.language, file.content, mode)
     );
     const batchResults = await Promise.all(batchPromises);
     results.push(...batchResults);
@@ -282,35 +341,63 @@ async function analyzeFilesWithAI(files, options = {}) {
 /**
  * Generate a general/comprehensive analysis from all diagnostics
  */
-async function generateGeneralAnalysis(diagnostics, files) {
+async function generateGeneralAnalysis(diagnostics, files, modeId) {
   if (!diagnostics || diagnostics.length === 0) {
     return {
       summary: 'No issues found in the codebase.',
       patterns: [],
       priorities: [],
       quickWins: [],
+      normalFixes: [],
     };
   }
 
   console.log('[AI Analyzer] Generating general analysis for', diagnostics.length, 'diagnostics');
 
-  if (!process.env.NVIDIA_API_KEY) {
+  if (!hasApiKey()) {
     return {
-      summary: 'AI service not configured. Set NVIDIA_API_KEY environment variable.',
+      summary: 'AI service not configured. Set AI_API_KEY (or NVIDIA_API_KEY) in .env.',
       patterns: [],
       priorities: [],
       quickWins: [],
+      normalFixes: [],
     };
   }
 
-  // Group diagnostics by file and type
-  const byFile = {};
+  const mode = resolveMode(modeId);
+
+  // The per-diagnostic arrays scale the response size linearly. On a large
+  // project an entry for every diagnostic overflows the token budget and the
+  // response gets truncated, so only the most severe diagnostics get a
+  // dedicated fix. The rest are covered by the summary and by the
+  // diagnostic-derived fallback.
+  //
+  // The count is derived from the mode's token budget: each focus diagnostic
+  // needs three array entries, so a small budget must not be asked for more
+  // focus diagnostics than it can fit.
+  const focusDiagnostics = [...diagnostics]
+    .sort(
+      (a, b) =>
+        SEVERITY_RANK[normalizeDiagnosticType(a.type)] -
+        SEVERITY_RANK[normalizeDiagnosticType(b.type)]
+    )
+    .slice(0, focusDiagnosticLimit(mode.maxTokens));
+
+  // Group diagnostics by file and type.
+  // Both the file name and the type come from the AI response, so they are
+  // normalised and bucketed defensively - an unexpected value must not throw.
+  // A null-prototype object is used for the file map because a file name of
+  // "__proto__" would otherwise hit Object.prototype.
+  const byFile = Object.create(null);
   const byType = { error: [], warning: [], info: [] };
-  
+
   for (const diag of diagnostics) {
-    if (!byFile[diag.file]) byFile[diag.file] = [];
-    byFile[diag.file].push(diag);
-    byType[diag.type].push(diag);
+    const file = diag.file || 'unknown';
+    if (!byFile[file]) byFile[file] = [];
+    byFile[file].push(diag);
+
+    const type = normalizeDiagnosticType(diag.type);
+    byType[type].push(diag);
   }
 
   // Build context for AI
@@ -338,12 +425,15 @@ FILES WITH ISSUES:
 ${fileContexts.map(fc => `
 === ${fc.file} (${fc.language}) ===
 Diagnostics: ${fc.diagnostics.length}
-${fc.diagnostics.map(d => `  Line ${d.line}: [${d.type.toUpperCase()}] ${d.code} - ${d.message}`).join('\n')}
+${fc.diagnostics.map(d => `  Line ${d.line}: [${normalizeDiagnosticType(d.type).toUpperCase()}] ${d.code} - ${d.message}`).join('\n')}
 Content preview:
 \`\`\`${fc.language.toLowerCase()}
 ${fc.contentPreview}
 \`\`\`
 `).join('\n')}
+
+FOCUS DIAGNOSTICS (give each one a priorities, quickWins and normalFixes entry):
+${focusDiagnostics.map(d => `  ${d.file}:${d.line} [${normalizeDiagnosticType(d.type).toUpperCase()}] ${d.code} - ${d.message}`).join('\n')}
 
 Provide a comprehensive analysis in this JSON format:
 {
@@ -364,27 +454,43 @@ Provide a comprehensive analysis in this JSON format:
 
 CRITICAL REQUIREMENTS - YOU MUST POPULATE ALL ARRAYS:
 1. patterns: Identify at least 1 recurring pattern across files (e.g., "Undefined Variable Usage", "Missing Error Handling", "Hardcoded Secrets")
-2. priorities: List EACH diagnostic as a priority item with file, line, diagnostic code, priority level, and reason
-3. quickWins: For EACH diagnostic, provide a QUICK FIX with corrected code snippet and line number (effort: "low")
-4. normalFixes: For EACH diagnostic, provide a DETAILED FIX with corrected code example and explanation (effort: "low|medium|high")
+2. priorities: List each FOCUS diagnostic as a priority item with file, line, diagnostic code, priority level, and reason
+3. quickWins: For each FOCUS diagnostic, provide a QUICK FIX with corrected code snippet and line number (effort: "low")
+4. normalFixes: For each FOCUS diagnostic, provide a DETAILED FIX with corrected code example and explanation (effort: "low|medium|high")
+
+The FOCUS diagnostics are the ${focusDiagnostics.length} most severe issues listed above. Any remaining diagnostics must be mentioned in the summary text (count and type), but do NOT create array entries for them.
 
 EXAMPLE for a Python NameError on line 1: print(hello + world)
 - quickWins: {"file": "test.py", "line": 1, "fix": "Define variables before use: hello = 'Hello'; world = 'World'; print(hello + world)", "effort": "low"}
 - normalFixes: {"file": "test.py", "line": 1, "issue": "NameError", "fix": "hello = 'Hello'\\nworld = 'World'\\nprint(hello + world)", "effort": "low", "explanation": "Variables must be defined before use. This fixes the NameError by initializing both variables."}
 
-Return COMPLETE valid JSON. Do NOT leave any array empty. Every diagnostic MUST have corresponding entries in quickWins and normalFixes.`;
+Return COMPLETE valid JSON. Do NOT leave any array empty. Every FOCUS diagnostic MUST have corresponding entries in priorities, quickWins and normalFixes. Do NOT add entries for diagnostics that are not in the FOCUS list.`;
 
   try {
-    const completion = await client.chat.completions.create({
-      model: 'nvidia/nemotron-3-ultra-550b-a55b',
-      messages: [
-        { role: 'system', content: 'You are FixMate AI, providing comprehensive code health analysis. Return ONLY complete valid JSON with all required fields. Do not truncate.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.1,
-      max_tokens: 4096,
-      response_format: { type: 'json_object' },
-    });
+    // Token budget for this call. It never exceeds the mode's configured
+    // budget (a model may reject a larger request), and scales down from
+    // there when the focus set is small.
+    const maxTokens = generalAnalysisMaxTokens(mode.maxTokens, focusDiagnostics.length);
+
+    const { completion, modelUsed } = await createCompletion(
+      modeId,
+      {
+        messages: [
+          { role: 'system', content: 'You are FixMate AI, providing comprehensive code health analysis. Return ONLY complete valid JSON with all required fields. Do not truncate.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      },
+      (c) => {
+        if (!c?.choices?.[0]?.message?.content) {
+          throw new Error('Empty response from AI model');
+        }
+      }
+    );
+
+    console.log(`[AI Analyzer] General analysis from model: ${modelUsed}`);
 
     const responseContent = completion.choices[0]?.message?.content;
     if (!responseContent) {
@@ -486,61 +592,81 @@ Return COMPLETE valid JSON. Do NOT leave any array empty. Every diagnostic MUST 
       }
     }
 
-    // Validate required fields exist
+    // Validate required fields exist.
+    // The arrays are clamped server-side as well: the cap has to hold for
+    // what the model actually returns, not just for what was sent to it,
+    // otherwise one long response can blow up the payload.
     if (!parsed.summary || typeof parsed.summary !== 'string') {
       parsed.summary = 'Analysis completed with issues found.';
     }
-    if (!Array.isArray(parsed.patterns)) parsed.patterns = [];
-    if (!Array.isArray(parsed.priorities)) parsed.priorities = [];
-    if (!Array.isArray(parsed.quickWins)) parsed.quickWins = [];
-    if (!Array.isArray(parsed.normalFixes)) parsed.normalFixes = [];
+    parsed.patterns = Array.isArray(parsed.patterns) ? parsed.patterns : [];
+    parsed.priorities = Array.isArray(parsed.priorities) ? parsed.priorities : [];
+    parsed.quickWins = Array.isArray(parsed.quickWins) ? parsed.quickWins : [];
+    parsed.normalFixes = Array.isArray(parsed.normalFixes) ? parsed.normalFixes : [];
+
+    // Drop non-object entries - the frontend reads properties off them.
+    const onlyObjects = (arr) => arr.filter((x) => x && typeof x === 'object' && !Array.isArray(x));
+    parsed.patterns = onlyObjects(parsed.patterns).slice(0, MAX_PATTERNS);
+    parsed.priorities = onlyObjects(parsed.priorities).slice(0, MAX_FOCUS_DIAGNOSTICS);
+    parsed.quickWins = onlyObjects(parsed.quickWins).slice(0, MAX_FOCUS_DIAGNOSTICS);
+    parsed.normalFixes = onlyObjects(parsed.normalFixes).slice(0, MAX_FOCUS_DIAGNOSTICS);
 
     // Clean up summary if it appears truncated
     if (parsed.summary.endsWith('{') || parsed.summary.endsWith('[')) {
       parsed.summary = parsed.summary.slice(0, -1).trim() + '.';
     }
 
-    // FALLBACK: If AI didn't provide quickWins/normalFixes, generate from diagnostics
-    if (parsed.quickWins.length === 0 && diagnostics.length > 0) {
-      parsed.quickWins = diagnostics.map(d => ({
+    // FALLBACK: If AI didn't provide quickWins/normalFixes, generate from the
+    // focus diagnostics (not every diagnostic - the cap exists to keep the
+    // payload bounded).
+    if (parsed.quickWins.length === 0 && focusDiagnostics.length > 0) {
+      parsed.quickWins = focusDiagnostics.map(d => ({
         file: d.file,
         line: d.line,
         fix: `Fix ${d.code}: ${d.message}`,
         effort: 'low'
       }));
     }
-    if (parsed.normalFixes.length === 0 && diagnostics.length > 0) {
-      parsed.normalFixes = diagnostics.map(d => ({
+    if (parsed.normalFixes.length === 0 && focusDiagnostics.length > 0) {
+      parsed.normalFixes = focusDiagnostics.map(d => ({
         file: d.file,
         line: d.line,
         issue: d.code,
         fix: `Resolve ${d.code} at line ${d.line}: ${d.message}`,
         effort: 'low',
-        explanation: `This fixes the ${d.type}: ${d.message} by addressing the root cause at line ${d.line}.`
+        explanation: `This fixes the ${normalizeDiagnosticType(d.type)}: ${d.message} by addressing the root cause at line ${d.line}.`
       }));
     }
     if (parsed.patterns.length === 0 && diagnostics.length > 0) {
-      // Group diagnostics by code to find patterns
-      const codeGroups = {};
-      diagnostics.forEach(d => {
-        if (!codeGroups[d.code]) codeGroups[d.code] = [];
-        codeGroups[d.code].push(d.file);
-      });
-      parsed.patterns = Object.entries(codeGroups).map(([code, files]) => ({
-        pattern: code,
-        description: `Multiple occurrences of ${code} across files`,
-        affectedFiles: [...new Set(files)],
-        severity: 'medium'
-      }));
+      // Group diagnostics by code to find patterns.
+      // A Map is used because the code is model-controlled: a code of
+      // "__proto__" would otherwise hit Object.prototype and throw.
+      const codeGroups = new Map();
+      for (const d of diagnostics) {
+        const code = String(d.code || 'Unknown');
+        if (!codeGroups.has(code)) codeGroups.set(code, []);
+        codeGroups.get(code).push(d.file);
+      }
+      parsed.patterns = [...codeGroups.entries()]
+        .slice(0, MAX_PATTERNS)
+        .map(([code, files]) => ({
+          pattern: code,
+          description: `Multiple occurrences of ${code} across files`,
+          affectedFiles: [...new Set(files)],
+          severity: 'medium'
+        }));
     }
-    if (parsed.priorities.length === 0 && diagnostics.length > 0) {
-      parsed.priorities = diagnostics.map(d => ({
-        file: d.file,
-        line: d.line,
-        diagnostic: d.code,
-        priority: d.type === 'error' ? 'critical' : d.type === 'warning' ? 'high' : 'medium',
-        reason: `${d.type.toUpperCase()}: ${d.message} at line ${d.line}`
-      }));
+    if (parsed.priorities.length === 0 && focusDiagnostics.length > 0) {
+      parsed.priorities = focusDiagnostics.map(d => {
+        const type = normalizeDiagnosticType(d.type);
+        return {
+          file: d.file,
+          line: d.line,
+          diagnostic: d.code,
+          priority: type === 'error' ? 'critical' : type === 'warning' ? 'high' : 'medium',
+          reason: `${type.toUpperCase()}: ${d.message} at line ${d.line}`
+        };
+      });
     }
 
     console.log('[AI Analyzer] General analysis generated successfully');
@@ -550,15 +676,19 @@ Return COMPLETE valid JSON. Do NOT leave any array empty. Every diagnostic MUST 
       priorities: parsed.priorities || [],
       quickWins: parsed.quickWins || [],
       normalFixes: parsed.normalFixes || [],
+      modelUsed,
     };
   } catch (err) {
-    console.error('[AI Analyzer] General analysis failed:', err);
+    // The raw error can embed the base URL, the model name and provider
+    // request ids, so it is logged but never returned to the browser.
+    const safeMessage = sanitizeAiError(err, 'General analysis unavailable.');
     return {
-      summary: 'General analysis could not be generated: ' + err.message,
+      summary: 'General analysis could not be generated.',
       patterns: [],
       priorities: [],
       quickWins: [],
       normalFixes: [],
+      error: safeMessage,
     };
   }
 }
@@ -567,4 +697,12 @@ module.exports = {
   analyzeFileWithAI,
   analyzeFilesWithAI,
   generateGeneralAnalysis,
+  // Exported so the regression tests exercise the production code rather
+  // than a copy of it.
+  normalizeDiagnosticType,
+  normalizeSeverity,
+  generalAnalysisMaxTokens,
+  focusDiagnosticLimit,
+  MAX_FOCUS_DIAGNOSTICS,
+  MAX_PATTERNS,
 };

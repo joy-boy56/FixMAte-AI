@@ -218,6 +218,58 @@ body {
   gap: var(--space-3);
 }
 
+/* Analysis Mode Toggle (Fast / Max) */
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.mode-btn {
+  min-width: 44px;
+  height: 30px;
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.mode-btn:hover:not(.active) {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+
+.mode-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Selected state: accent fill + inset shadow + bolder weight so it is not
+   communicated by color alone. */
+.mode-btn.active {
+  background: var(--accent);
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.mode-btn.active:hover {
+  background: var(--accent-hover);
+}
+
 /* Theme Toggle */
 .theme-toggle {
   display: flex;
@@ -1388,6 +1440,25 @@ body {
 @media (max-width: 900px) {
   .sidebar-toggle {
     display: flex;
+  }
+}
+
+/* Keep the header usable on narrow screens: the mode toggle shrinks
+   instead of pushing the other header actions off the row. */
+@media (max-width: 640px) {
+  .header-right {
+    gap: var(--space-2);
+  }
+
+  .mode-toggle {
+    padding: 1px;
+  }
+
+  .mode-btn {
+    min-width: 34px;
+    height: 26px;
+    padding: 0 var(--space-2);
+    font-size: 0.7rem;
   }
 }
 

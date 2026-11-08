@@ -1,44 +1,47 @@
 /**
  * AI Explanation Module
- * Uses NVIDIA Nemotron to generate educational explanations for diagnostics
+ * Uses the configured AI model to generate educational explanations for diagnostics
  */
 
-const OpenAI = require('openai');
 const { buildExplanationPrompt } = require('./prompts');
-
-const client = new OpenAI({
-  baseURL: 'https://integrate.api.nvidia.com/v1',
-  apiKey: process.env.NVIDIA_API_KEY,
-  timeout: 60000,
-  maxRetries: 2,
-});
+const { createCompletion, resolveMode, hasApiKey, sanitizeAiError } = require('../config/aiModels');
 
 /**
  * Generate AI explanation for a diagnostic
  */
-async function explainDiagnostic(diagnostic, fileContext, projectContext = {}) {
-  if (!process.env.NVIDIA_API_KEY) {
+async function explainDiagnostic(diagnostic, fileContext, projectContext = {}, modeId) {
+  if (!hasApiKey()) {
     return {
       success: false,
       explanation: null,
-      error: 'AI service not configured. Set NVIDIA_API_KEY environment variable.',
+      error: 'AI service not configured. Set AI_API_KEY (or NVIDIA_API_KEY) in .env.',
     };
   }
-  
+
+  const mode = resolveMode(modeId);
+
   try {
     const prompt = buildExplanationPrompt(diagnostic, fileContext, projectContext);
-    
-    const completion = await client.chat.completions.create({
-      model: 'nvidia/nemotron-3-ultra-550b-a55b',
-      messages: [
-        { role: 'system', content: getSystemPrompt() },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.3,
-      max_tokens: 2048,
-      response_format: { type: 'json_object' },
-    });
-    
+
+    const { completion, modelUsed } = await createCompletion(
+      modeId,
+      {
+        messages: [
+          { role: 'system', content: getSystemPrompt() },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      },
+      (c) => {
+        if (!c?.choices?.[0]?.message?.content) {
+          throw new Error('Empty response from AI model');
+        }
+      }
+    );
+
+    console.log(`[Explain] Response from model: ${modelUsed} (mode=${mode.id})`);
+
     const responseContent = completion.choices[0]?.message?.content;
     if (!responseContent) {
       throw new Error('Empty response from AI model');
@@ -49,13 +52,16 @@ async function explainDiagnostic(diagnostic, fileContext, projectContext = {}) {
     return {
       success: true,
       explanation,
+      modelUsed,
     };
   } catch (err) {
-    console.error('AI explanation error:', err);
+    // The raw error can embed the base URL, the model name and provider
+    // request ids, so it is logged but never returned to the browser.
+    const safeMessage = sanitizeAiError(err, 'AI explanation unavailable.');
     return {
       success: false,
       explanation: null,
-      error: err.message,
+      error: safeMessage,
     };
   }
 }
@@ -63,8 +69,8 @@ async function explainDiagnostic(diagnostic, fileContext, projectContext = {}) {
 /**
  * Explain multiple diagnostics (batched for efficiency)
  */
-async function explainDiagnostics(diagnostics, files, projectContext = {}) {
-  if (!process.env.NVIDIA_API_KEY) {
+async function explainDiagnostics(diagnostics, files, projectContext = {}, modeId) {
+  if (!hasApiKey()) {
     return diagnostics.map(d => ({
       diagnosticId: d.id,
       success: false,
@@ -101,7 +107,7 @@ async function explainDiagnostics(diagnostics, files, projectContext = {}) {
         sourceLine: diag.sourceLine,
       };
       
-      const result = await explainDiagnostic(diag, fileContext, projectContext);
+      const result = await explainDiagnostic(diag, fileContext, projectContext, modeId);
       results.push({
         diagnosticId: diag.id,
         ...result,
@@ -185,7 +191,7 @@ function parseExplanationResponse(content) {
 /**
  * Get explanation for a single diagnostic (with caching potential)
  */
-async function getExplanation(diagnosticId, diagnostics, files, projectContext) {
+async function getExplanation(diagnosticId, diagnostics, files, projectContext, modeId) {
   const diagnostic = diagnostics.find(d => d.id === diagnosticId);
   if (!diagnostic) {
     return { success: false, error: 'Diagnostic not found' };
@@ -205,7 +211,7 @@ async function getExplanation(diagnosticId, diagnostics, files, projectContext) 
     sourceLine: diagnostic.sourceLine,
   };
   
-  return explainDiagnostic(diagnostic, fileContext, projectContext);
+  return explainDiagnostic(diagnostic, fileContext, projectContext, modeId);
 }
 
 module.exports = {

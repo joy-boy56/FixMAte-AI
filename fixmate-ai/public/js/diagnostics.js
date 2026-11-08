@@ -96,10 +96,16 @@ const Diagnostics = {
   },
 
   escapeHtml(text) {
-    if (!text) return '';
+    if (text === null || text === undefined) return '';
     const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    div.textContent = String(text);
+    // Quotes must be escaped too - values are interpolated into HTML that can
+    // contain double-quoted attributes.
+    const QUOT = '\u0026quot;';
+    const APOS = '\u0026#39;';
+    return div.innerHTML
+      .replace(/"/g, QUOT)
+      .replace(/'/g, APOS);
   },
 
   // Render error panel for a specific file
@@ -132,13 +138,18 @@ const Diagnostics = {
 
     // Add error items
     diagnostics.forEach(diag => {
+      // The type is normalised server-side, but the list is also guarded
+      // here so an unexpected value can never break the severity styling or
+      // become an unescaped HTML sink.
+      const type = ['error', 'warning', 'info'].includes(diag.type) ? diag.type : 'info';
+
       const itemEl = document.createElement('div');
-      itemEl.className = `error-item ${diag.type}`;
+      itemEl.className = `error-item ${type}`;
       itemEl.dataset.diagnosticId = diag.id;
 
-      const severityIcon = diag.type === 'error' 
+      const severityIcon = type === 'error' 
         ? '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>'
-        : diag.type === 'warning'
+        : type === 'warning'
         ? '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>'
         : '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>';
 
@@ -150,11 +161,11 @@ const Diagnostics = {
         </div>
         <div class="error-item-content">
           <div class="error-item-header">
-            <span class="error-item-type">${diag.type}</span>
+            <span class="error-item-type">${this.escapeHtml(type)}</span>
             <span class="error-item-code">${this.escapeHtml(diag.code)}</span>
           </div>
           <div class="error-item-message">${this.escapeHtml(diag.message)}</div>
-          <div class="error-item-location">${this.escapeHtml(diag.file)}:${diag.line}:${diag.column}</div>
+          <div class="error-item-location">${this.escapeHtml(diag.file)}:${this.escapeHtml(diag.line)}:${this.escapeHtml(diag.column)}</div>
         </div>
       `;
 

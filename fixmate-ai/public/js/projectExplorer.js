@@ -228,9 +228,15 @@ const ProjectExplorer = {
   },
 
   escapeHtml(text) {
-    if (!text) return '';
+    if (text === null || text === undefined) return '';
     const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    div.textContent = String(text);
+    // Quotes must be escaped too - values are interpolated into
+    // double-quoted attributes such as data-path and title.
+    const QUOT = '\u0026quot;';
+    const APOS = '\u0026#39;';
+    return div.innerHTML
+      .replace(/"/g, QUOT)
+      .replace(/'/g, APOS);
   },
 };

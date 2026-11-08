@@ -60,12 +60,23 @@ fixmate-ai/
 │   │   └── styles.css      # All styles
 │   └── js/
 │       ├── app.js          # Main application logic
-│       ├── renderer.js     # Results rendering
+│       ├── upload.js       # File / folder upload
+│       ├── projectExplorer.js # Project tree
+│       ├── diagnostics.js  # Issues tab rendering
+│       ├── explanation.js  # Chat panel + general analysis
 │       └── examples.js     # Pre-filled examples
-├── services/
-│   └── aiService.js        # NVIDIA AI integration
+├── src/
+│   ├── config/
+│   │   └── aiModels.js     # Env-driven AI model / mode config (single source of truth)
+│   ├── analysis/
+│   │   ├── aiAnalyzer.js   # AI analysis + general analysis
+│   │   └── scanProject.js  # Project scanning
+│   ├── ai/
+│   │   └── explainDiagnostics.js # Diagnostic explanations
+│   └── server/routes/      # health / scan / explain routes
 ├── prompts/
 │   └── debugPrompt.js      # AI prompt engineering
+├── test/                   # node:test unit tests + CDP browser tests
 ├── server.js               # Express server
 ├── package.json
 ├── .env.example

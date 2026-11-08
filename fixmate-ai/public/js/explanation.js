@@ -122,10 +122,10 @@ const Explanation = {
             <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3);">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
                 <span style="font-weight: 500; color: var(--text);">${this.escapeHtml(p.pattern)}</span>
-                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${p.severity === 'high' ? 'var(--error-dim)' : p.severity === 'medium' ? 'var(--warning-dim)' : 'var(--accent-dim)'}; color: ${p.severity === 'high' ? 'var(--error)' : p.severity === 'medium' ? 'var(--warning)' : 'var(--accent)'}">${p.severity}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${p.severity === 'high' ? 'var(--error-dim)' : p.severity === 'medium' ? 'var(--warning-dim)' : 'var(--accent-dim)'}; color: ${p.severity === 'high' ? 'var(--error)' : p.severity === 'medium' ? 'var(--warning)' : 'var(--accent)'}">${this.escapeHtml(p.severity)}</span>
               </div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: var(--space-2);">${this.escapeHtml(p.description)}</div>
-              <div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Affected: ${p.affectedFiles?.join(', ') || 'N/A'}</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Affected: ${this.escapeHtml(p.affectedFiles?.join(', ') || 'N/A')}</div>
             </div>
           `).join('')}
         </div>
@@ -137,10 +137,10 @@ const Explanation = {
         <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2);">Priority Fixes</div>
         <div style="display: flex; flex-direction: column; gap: var(--space-2);">
           ${generalAnalysis.priorities.slice(0, 5).map(p => `
-            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer;" data-file="${this.escapeHtml(p.file)}" data-line="${p.line}" data-diagnostic="${this.escapeHtml(p.diagnostic)}">
+            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer;" data-file="${this.escapeHtml(p.file)}" data-line="${this.escapeHtml(p.line)}" data-diagnostic="${this.escapeHtml(p.diagnostic)}">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
-                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(p.file)}:${p.line}</span>
-                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${p.priority === 'critical' ? 'var(--error-dim)' : p.priority === 'high' ? 'var(--warning-dim)' : 'var(--accent-dim)'}; color: ${p.priority === 'critical' ? 'var(--error)' : p.priority === 'high' ? 'var(--warning)' : 'var(--accent)'}">${p.priority}</span>
+                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(p.file)}:${this.escapeHtml(p.line)}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${p.priority === 'critical' ? 'var(--error-dim)' : p.priority === 'high' ? 'var(--warning-dim)' : 'var(--accent-dim)'}; color: ${p.priority === 'critical' ? 'var(--error)' : p.priority === 'high' ? 'var(--warning)' : 'var(--accent)'}">${this.escapeHtml(p.priority)}</span>
               </div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: var(--space-1);">${this.escapeHtml(p.diagnostic)}</div>
               <div style="font-size: 0.7rem; color: var(--text-muted);">${this.escapeHtml(p.reason)}</div>
@@ -157,8 +157,8 @@ const Explanation = {
           ${generalAnalysis.quickWins.slice(0, 5).map(qw => `
             <div style="background: var(--success-dim); border: 1px solid var(--success); border-radius: var(--radius-sm); padding: var(--space-3);">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
-                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(qw.file)}:${qw.line}</span>
-                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${qw.effort === 'high' ? 'var(--warning-dim)' : 'var(--success-dim)'}; color: ${qw.effort === 'high' ? 'var(--warning)' : 'var(--success)'}">${qw.effort}</span>
+                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(qw.file)}:${this.escapeHtml(qw.line)}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${qw.effort === 'high' ? 'var(--warning-dim)' : 'var(--success-dim)'}; color: ${qw.effort === 'high' ? 'var(--warning)' : 'var(--success)'}">${this.escapeHtml(qw.effort)}</span>
               </div>
               <div style="font-size: 0.8rem; color: var(--text-secondary);">${this.escapeHtml(qw.fix)}</div>
             </div>
@@ -172,10 +172,10 @@ const Explanation = {
         <div class="section-label" style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: var(--space-2);">Normal Fixes</div>
         <div style="display: flex; flex-direction: column; gap: var(--space-2);">
           ${generalAnalysis.normalFixes.slice(0, 5).map(nf => `
-            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer;" data-file="${this.escapeHtml(nf.file)}" data-line="${nf.line}" data-diagnostic="${this.escapeHtml(nf.issue)}">
+            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer;" data-file="${this.escapeHtml(nf.file)}" data-line="${this.escapeHtml(nf.line)}" data-diagnostic="${this.escapeHtml(nf.issue)}">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
-                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(nf.file)}:${nf.line}</span>
-                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${nf.effort === 'high' ? 'var(--warning-dim)' : nf.effort === 'medium' ? 'var(--accent-dim)' : 'var(--success-dim)'}; color: ${nf.effort === 'high' ? 'var(--warning)' : nf.effort === 'medium' ? 'var(--accent)' : 'var(--success)'}">${nf.effort}</span>
+                <span style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;">${this.escapeHtml(nf.file)}:${this.escapeHtml(nf.line)}</span>
+                <span style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-sm); background: ${nf.effort === 'high' ? 'var(--warning-dim)' : nf.effort === 'medium' ? 'var(--accent-dim)' : 'var(--success-dim)'}; color: ${nf.effort === 'high' ? 'var(--warning)' : nf.effort === 'medium' ? 'var(--accent)' : 'var(--success)'}">${this.escapeHtml(nf.effort)}</span>
               </div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: var(--space-1);">${this.escapeHtml(nf.fix)}</div>
               <div style="font-size: 0.7rem; color: var(--text-muted);">${this.escapeHtml(nf.explanation || '')}</div>
@@ -237,15 +237,15 @@ const Explanation = {
       <div class="message-content">
         <div class="message-header" style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);">
           <span style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: ${severityColor};">
-            ${diagnostic.type}
+            ${this.escapeHtml(diagnostic.type)}
           </span>
-          <span style="font-size: 0.7rem; color: var(--text-muted);">${diagnostic.code}</span>
+          <span style="font-size: 0.7rem; color: var(--text-muted);">${this.escapeHtml(diagnostic.code)}</span>
         </div>
         <div class="message-text" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: var(--space-2);">
           ${this.escapeHtml(diagnostic.message)}
         </div>
         <div class="message-meta" style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">
-          ${diagnostic.file}:${diagnostic.line}:${diagnostic.column}
+          ${this.escapeHtml(diagnostic.file)}:${this.escapeHtml(diagnostic.line)}:${this.escapeHtml(diagnostic.column)}
         </div>
       </div>
     `;
@@ -297,7 +297,7 @@ const Explanation = {
             ${this.escapeHtml(diag.code)} - ${this.escapeHtml(diag.message)}
           </div>
           <div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">
-            ${this.escapeHtml(diag.file)}:${diag.line}:${diag.column}
+            ${this.escapeHtml(diag.file)}:${this.escapeHtml(diag.line)}:${this.escapeHtml(diag.column)}
           </div>
         `;
         linkEl.addEventListener('click', () => this.showDiagnosticExplanation(diag));
@@ -314,17 +314,27 @@ const Explanation = {
   },
 
   formatMessageText(text) {
-    // Convert simple markdown-like formatting
-    return text
+    if (text === null || text === undefined) return '';
+    // Escape FIRST, then apply the limited markdown transforms, so AI output
+    // can never be parsed as HTML.
+    return this.escapeHtml(text)
       .replace(/\n/g, '<br>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   },
 
   escapeHtml(text) {
-    if (!text) return '';
+    if (text === null || text === undefined) return '';
     const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    div.textContent = String(text);
+    // textContent -> innerHTML escapes & < > but NOT quotes, so a value
+    // interpolated into a double-quoted attribute could break out of it.
+    // Escaping the quotes is safe in text position too: the browser decodes
+    // the entities back to the original characters when rendering.
+    const QUOT = '\u0026quot;';
+    const APOS = '\u0026#39;';
+    return div.innerHTML
+      .replace(/"/g, QUOT)
+      .replace(/'/g, APOS);
   },
 
   async showDiagnosticExplanation(diagnostic) {
@@ -439,6 +449,7 @@ const Explanation = {
             languages: [...new Set(this.state.files.map(f => f.language).filter(l => l !== 'Unknown'))],
             totalDiagnostics: this.state.files.reduce((sum, f) => sum + (f.diagnostics?.length || 0), 0),
           },
+          mode: window.App && App.state ? App.state.aiMode : undefined,
         }),
       });
 

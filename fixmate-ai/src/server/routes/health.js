@@ -6,6 +6,7 @@ const express = require('express');
 const { checkPythonAvailable } = require('../../analysis/pythonAnalyzer');
 const { checkNodeAvailable } = require('../../analysis/javascriptAnalyzer');
 const { checkTscAvailable } = require('../../analysis/typescriptAnalyzer');
+const { getAvailableModes, getDefaultModeId, getProviderName, resolveMode, hasApiKey } = require('../../config/aiModels');
 
 const router = express.Router();
 
@@ -21,7 +22,8 @@ router.get('/health', async (req, res) => {
       checkTscAvailable(),
     ]);
     
-    const hasApiKey = !!process.env.NVIDIA_API_KEY;
+    const hasKey = hasApiKey();
+    const defaultMode = resolveMode(getDefaultModeId());
     
     res.json({
       status: 'ok',
@@ -35,10 +37,16 @@ router.get('/health', async (req, res) => {
         json: { available: true, name: 'JSON.parse' },
       },
       ai_provider: {
-        name: 'NVIDIA Nemotron 3 Ultra',
-        model: 'nvidia/nemotron-3-ultra-550b-a55b',
-        configured: hasApiKey,
-        available: hasApiKey,
+        name: getProviderName(),
+        // The model used when the client does not request a specific mode.
+        // Per-mode models are listed in `modes` below.
+        model: defaultMode.model,
+        configured: hasKey,
+        available: hasKey,
+        // Frontend renders the mode toggle from this - no model name is
+        // hardcoded in the browser.
+        defaultMode: defaultMode.id,
+        modes: getAvailableModes(),
       },
       features: {
         folder_upload: true,

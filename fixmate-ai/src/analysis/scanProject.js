@@ -22,30 +22,41 @@ async function scanProject(files, options = {}) {
     const supportedFiles = processed.files.filter(f => f.status === 'supported' && f.content);
     
     // Step 3: Run AI analyzer on all supported files
-    const aiResults = await analyzeFilesWithAI(supportedFiles, { concurrency: 3 });
+    const aiResults = await analyzeFilesWithAI(supportedFiles, { concurrency: 3, mode: options.mode });
     
     // Step 4: Collect all diagnostics from AI results
     const allDiagnostics = [];
+    const aiFailures = [];
+    const modelsUsed = new Set();
     
     for (const result of aiResults) {
       if (result.success && result.issues && result.issues.length > 0) {
         allDiagnostics.push(...result.issues);
       } else if (!result.success) {
         console.warn(`AI analysis failed for file: ${result.error}`);
+        // Sanitized: the raw upstream error can contain the base URL, model
+        // name and request IDs, so it is logged but not returned.
+        aiFailures.push('AI analysis failed for one or more files.');
+      }
+      if (result.modelUsed) {
+        modelsUsed.add(result.modelUsed);
       }
     }
     
     // Step 5: Sort diagnostics
     const sorted = sortDiagnostics(allDiagnostics);
     
-    // Step 6: Generate summary
+    // Step 6: Generate summary.
+    // The grouping maps use null prototypes: the keys come from file names
+    // and language tags, and a key of "__proto__" would otherwise hit
+    // Object.prototype.
     const summary = {
       total: sorted.length,
       errors: sorted.filter(d => d.type === 'error').length,
       warnings: sorted.filter(d => d.type === 'warning').length,
       info: sorted.filter(d => d.type === 'info').length,
-      byFile: {},
-      byLanguage: {},
+      byFile: Object.create(null),
+      byLanguage: Object.create(null),
       bySeverity: {
         high: sorted.filter(d => d.severity === 'high').length,
         medium: sorted.filter(d => d.severity === 'medium').length,
@@ -61,7 +72,7 @@ async function scanProject(files, options = {}) {
     }
     
     // Step 7: Generate general analysis
-    const generalAnalysis = await generateGeneralAnalysis(sorted, processed.files);
+    const generalAnalysis = await generateGeneralAnalysis(sorted, processed.files, options.mode);
     
     // Step 8: Prepare response
     const scanTime = Date.now() - startTime;
@@ -79,6 +90,13 @@ async function scanProject(files, options = {}) {
       },
       diagnostics: sorted,
       generalAnalysis,
+      // Surfaced so the client can tell the difference between "no issues
+      // found" and "the AI could not analyze these files".
+      ai: {
+        failedFiles: aiFailures.length,
+        errors: aiFailures,
+        modelsUsed: [...modelsUsed],
+      },
       skipped: processed.files.filter(f => f.status === 'skipped'),
     };
   } catch (err) {
@@ -106,16 +124,24 @@ async function scanProjectFolder(files, options = {}) {
     const supportedFiles = processed.files.filter(f => f.status === 'supported' && f.content);
     
     // Run AI analyzer
-    const aiResults = await analyzeFilesWithAI(supportedFiles, { concurrency: 3 });
+    const aiResults = await analyzeFilesWithAI(supportedFiles, { concurrency: 3, mode: options.mode });
     
     // Collect all diagnostics
     const allDiagnostics = [];
+    const aiFailures = [];
+    const modelsUsed = new Set();
     
     for (const result of aiResults) {
       if (result.success && result.issues && result.issues.length > 0) {
         allDiagnostics.push(...result.issues);
       } else if (!result.success) {
         console.warn(`AI analysis failed for file: ${result.error}`);
+        // Sanitized: the raw upstream error can contain the base URL, model
+        // name and request IDs, so it is logged but not returned.
+        aiFailures.push('AI analysis failed for one or more files.');
+      }
+      if (result.modelUsed) {
+        modelsUsed.add(result.modelUsed);
       }
     }
     
@@ -143,6 +169,11 @@ async function scanProjectFolder(files, options = {}) {
       summary.byLanguage[diag.language] = (summary.byLanguage[diag.language] || 0) + 1;
     }
     
+    // Generate general analysis (same as regular scan)
+    const generalAnalysis = await generateGeneralAnalysis(normalized, processed.files, options.mode);
+    
+    // Computed after the general analysis so both scan paths report the
+    // same total duration.
     const scanTime = Date.now() - startTime;
     
     return {
@@ -157,6 +188,12 @@ async function scanProjectFolder(files, options = {}) {
         },
       },
       diagnostics: normalized,
+      generalAnalysis,
+      ai: {
+        failedFiles: aiFailures.length,
+        errors: aiFailures,
+        modelsUsed: [...modelsUsed],
+      },
       skipped: processed.files.filter(f => f.status === 'skipped'),
     };
   } catch (err) {
